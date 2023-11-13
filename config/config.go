@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"fmt"
 	"os"
 )
 
@@ -27,6 +28,8 @@ func ParseFlags(p *Config) *Config {
 	if botToken := os.Getenv("BOT_TOKEN"); botToken != "" {
 		p.BotToken = botToken
 	}
+
+	fmt.Println(p.BotToken)
 
 	return p
 }
