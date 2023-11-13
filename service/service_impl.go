@@ -1,10 +1,15 @@
 package service
 
-func NewRepository() Service {
-	return &serviceImpl{}
+import "github.com/MorZLE/jobs_bot/repository"
+
+func NewService(db repository.Storage) Service {
+	return &serviceImpl{
+		db: db,
+	}
 }
 
 type serviceImpl struct {
+	db repository.Storage
 }
 
 func (s *serviceImpl) Set() {
