@@ -13,10 +13,12 @@ func NewConfig() *Config {
 type Config struct {
 	DB       string
 	BotToken string
+	Dir      string
 }
 
 func ParseFlags(p *Config) *Config {
 
+	var err error
 	flag.StringVar(&p.DB, "a", "", "address db")
 	flag.StringVar(&p.BotToken, "b", "", "BotToken")
 	flag.Parse()
@@ -31,5 +33,9 @@ func ParseFlags(p *Config) *Config {
 
 	fmt.Println(p.BotToken)
 
+	p.Dir, err = os.Getwd()
+	if err != nil {
+		fmt.Println(err)
+	}
 	return p
 }
