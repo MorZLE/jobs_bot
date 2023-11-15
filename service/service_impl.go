@@ -9,7 +9,6 @@ import (
 )
 
 func NewService(cnf *config.Config, db repository.Storage) Service {
-
 	return &serviceImpl{
 		db:  db,
 		dir: cnf.Dir,
@@ -45,4 +44,12 @@ func (s *serviceImpl) Delete(id int64) error {
 		return err
 	}
 	return nil
+}
+
+func (s *serviceImpl) GetResume(category string, count int) (model.Student, error) {
+	user, err := s.db.GetOneResume(category, count)
+	if err != nil {
+		return model.Student{}, err
+	}
+	return user, nil
 }

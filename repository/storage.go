@@ -7,4 +7,5 @@ type Storage interface {
 	Get(id int64) (model.Student, error)
 	Delete(id int64) error
 	Close()
+	GetOneResume(category string, count int) (model.Student, error)
 }
