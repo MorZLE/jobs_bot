@@ -33,7 +33,7 @@ func NewRepository(cnf *config.Config) (Storage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
-	category := []string{"Разработчик", "Инфо без-ть", "Системный ад-р", "Банковское дело", "Страховой агент", "Мечтатель"}
+	category := []string{"Разработчик", "Инфо без-ть", "Системный ад-р", "Банковское дело", "Страховой агент", "Мечтатель", "Дизайнер"}
 	mCategory := make(map[string][]model.Student)
 	for _, c := range category {
 		var students []model.Student
