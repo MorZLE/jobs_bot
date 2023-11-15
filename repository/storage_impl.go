@@ -26,11 +26,11 @@ func NewRepository(cnf *config.Config) (Storage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect database: %w", err)
 	}
-	err = db.AutoMigrate(&model.Student{}, &model.Employee{})
+
+	err = db.Debug().AutoMigrate(&model.Student{}, &model.Employee{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
-
 	return &repository{db: db}, nil
 }
 
@@ -47,17 +47,16 @@ func (r *repository) Set(student model.Student) error {
 
 func (r *repository) Get(id int64) (model.Student, error) {
 	var student model.Student
-	if err := r.db.First(&student, id).Error; err != nil {
+	if err := r.db.Where("tgid = ?", id).First(&student).Error; err != nil {
 		return model.Student{}, fmt.Errorf("error get user: %w", err)
 	}
 	return student, nil
 }
 
-func (r *repository) Delete(id int) error {
+func (r *repository) Delete(id int64) error {
 	var student model.Student
-	r.db.First(&student, id)
-	if err := r.db.Delete(&student).Error; err != nil {
-		return fmt.Errorf("error create user: %w", err)
+	if err := r.db.Where("tgid = ?", id).Delete(&student).Error; err != nil {
+		return fmt.Errorf("error delete user: %w", err)
 	}
 	return nil
 }

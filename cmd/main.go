@@ -12,13 +12,12 @@ func main() {
 	cnf := config.NewConfig()
 
 	st, err := repository.NewRepository(cnf)
-
+	defer st.Close()
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer st.Close()
 
-	s := service.NewService(st)
+	s := service.NewService(cnf, st)
 	h, err := controller.NewHandler(s, cnf)
 	if err != nil {
 		log.Fatal(err)

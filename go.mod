@@ -6,6 +6,7 @@ require (
 	github.com/egorgasay/dockerdb/v3 v3.4.0
 	github.com/jinzhu/gorm v1.9.16
 	github.com/lib/pq v1.10.9
+	github.com/tucnak/telebot v2.0.0+incompatible
 	gopkg.in/telebot.v3 v3.1.4
 	gorm.io/driver/postgres v1.5.4
 	gorm.io/gorm v1.25.5
@@ -24,6 +25,7 @@ require (
 	github.com/jackc/pgx/v5 v5.4.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/mitchellh/hashstructure v1.1.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

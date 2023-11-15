@@ -26,7 +26,7 @@ func NewHandler(s service.Service, cnf *config.Config) (*Handler, error) {
 		1: "Ваше ФИО",
 		2: "Ваша группа",
 		3: "Сфера деятельности",
-		4: "Прикрепите ваше резюме в формате .pdf",
+		4: "Прикрепите резюме в формате .pdf одной страницей",
 	}
 
 	return &Handler{
@@ -55,11 +55,25 @@ func (h *Handler) Start() {
 	h.bot.Handle(&btnEmployee, h.RegEmployee)
 	h.bot.Handle(&ViewResume, h.ViewRes)
 	h.bot.Handle(&btnStudent, h.RegStudent)
+
 	h.bot.Handle(bot.OnText, h.Text)
 	h.bot.Handle(bot.OnDocument, h.Document)
+	h.bot.Handle(bot.OnPhoto, h.Document)
+
 	h.bot.Handle(&btnNext, h.Next)
 	h.bot.Handle(&btnPrev, h.Prev)
 	h.bot.Handle(&btnOffer, h.Offer)
+	h.bot.Handle(&ReviewResume, h.ReviewResume)
+	h.bot.Handle(&DeleteProfile, h.DeleteProfile)
+
+	h.bot.Handle(&btnC1, h.btnC1)
+	h.bot.Handle(&btnC2, h.btnC1)
+	h.bot.Handle(&btnC3, h.btnC1)
+	h.bot.Handle(&btnC4, h.btnC1)
+	h.bot.Handle(&btnC5, h.btnC1)
+	h.bot.Handle(&btnC6, h.btnC1)
+	h.bot.Handle(&btnC7, h.btnC1)
+
 	h.bot.Start()
 	log.Println("Bot started")
 }
@@ -67,41 +81,88 @@ func (h *Handler) Start() {
 var (
 	menu     = &bot.ReplyMarkup{ResizeKeyboard: true}
 	selector = &bot.ReplyMarkup{}
+	profile  = &bot.ReplyMarkup{}
+	category = &bot.ReplyMarkup{}
 
 	// Reply buttons.
 	btnEmployee = menu.Text("Я работодатель")
 	btnStudent  = menu.Text("Я студент")
 
-	ViewResume = menu.Text("Посмотреть резюме")
+	ViewResume    = menu.Text("Профиль")
+	ReviewResume  = menu.Data("Изменить резюме", "review")
+	DeleteProfile = menu.Data("Удалить профиль", "deleteProfile")
 
 	btnPrev  = selector.Data("⬅", "prev")
 	btnOffer = selector.Data("Предложить работу", "prev")
 	btnNext  = selector.Data("➡", "next")
 )
 
+var (
+	btnC1 = category.Data("Разработчик", "btnC1", "Разработчик")
+	btnC2 = category.Data("Инфо без-ть", "btnC2", "Инфо без-ть")
+	btnC3 = category.Data("Дизайнер", "btnC3", "Дизайнер")
+	btnC4 = category.Data("Системный ад-р", "btnC4", "Системный ад-р")
+	btnC5 = category.Data("Банковское дело", "btnC5", "Банковское дело")
+	btnC6 = category.Data("Страховой агент", "btnC6", "Страховой агент")
+	btnC7 = category.Data("Мечтатель", "btnC7", "Мечтатель")
+)
+
 func (h *Handler) HandlerStart(c bot.Context) error {
 	menu.Reply(
 		menu.Row(btnEmployee),
 		menu.Row(btnStudent),
+		menu.Row(ViewResume),
 	)
 	return c.Send("Привет! Я бот, который поможет тебе найти работу!", menu)
 }
 func (h *Handler) ViewRes(c bot.Context) error {
+	profile.Inline(
+		profile.Row(ReviewResume),
+		profile.Row(DeleteProfile),
+	)
 	user, err := h.s.Get(c.Sender().ID)
 	if err != nil {
-		return err
+		log.Println(err)
 	}
-	urlPDF := fmt.Sprintf("src\\pdf\\%d.pdf", user.TgId)
+	if user == (model.Student{}) {
+		h.bot.Send(c.Chat(), "Профиль не найден")
+		return nil
+	}
+	urlPDF := fmt.Sprintf("src\\resume\\%d.pdf", user.Tgid)
 	resume := fmt.Sprintf("ФИО: %s\nГруппа: %s\nКатегория: %s\n", user.Fio, user.Group, user.Category)
 	file := &bot.Photo{
 		File:    bot.FromDisk(urlPDF),
 		Caption: resume,
 	}
 
-	_, err = h.bot.Send(c.Chat(), file)
+	_, err = h.bot.Send(c.Chat(), file, profile)
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (h *Handler) DeleteProfile(c bot.Context) error {
+	err := h.s.Delete(c.Sender().ID)
+	if err != nil {
+		log.Println(err)
+		h.bot.Send(c.Chat(), "Произошла ошибка")
+		return err
+	}
+	h.bot.Send(c.Chat(), "Профиль удален, надеюсь вы нашли работу!")
+	return nil
+}
+
+func (h *Handler) ReviewResume(c bot.Context) error {
+	id := c.Sender().ID
+	h.userQuestion[id] = 1
+	err := h.s.Delete(id)
+	if err != nil {
+		log.Println(err)
+		h.bot.Send(c.Chat(), "Произошла ошибка")
+		return err
+	}
+	h.bot.Send(c.Chat(), h.mQuestion[h.userQuestion[id]])
 	return nil
 }
 
@@ -115,7 +176,7 @@ func (h *Handler) Text(c bot.Context) error {
 	switch h.userQuestion[id] {
 	case 1:
 		st := model.Student{
-			TgId: id,
+			Tgid: id,
 			Fio:  data,
 		}
 		h.userReg[id] = st
@@ -125,11 +186,6 @@ func (h *Handler) Text(c bot.Context) error {
 		st.Group = data
 		h.userReg[id] = st
 		h.userQuestion[id]++
-	case 3:
-		st := h.userReg[id]
-		st.Category = data
-		h.userReg[id] = st
-		h.userQuestion[id]++
 	}
 	h.RegStudent(c)
 	return nil
@@ -137,34 +193,59 @@ func (h *Handler) Text(c bot.Context) error {
 func (h *Handler) Document(c bot.Context) error {
 	doc := c.Message().Document
 	id := c.Sender().ID
+	var pdfPath string
 	if h.userQuestion[id] == 4 {
 		if ok := strings.HasSuffix(doc.FileName, ".pdf"); ok {
-			err := h.s.SaveResume(id, doc.File, h.userReg[id])
+			err := h.s.SaveResume(h.userReg[id])
 			if err != nil {
 				log.Println(err)
 				h.bot.Send(c.Chat(), "Что то пошло не так")
+				return err
+			}
+			pdfPath = fmt.Sprintf("%s\\src\\resume\\%d.pdf", h.dir, id)
+			err = h.bot.Download(&doc.File, pdfPath)
+			if err != nil {
+				log.Println(err)
+				h.bot.Send(c.Chat(), "Что то пошло не так")
+				return err
 			}
 			h.bot.Send(c.Chat(), "Ваше резюме опубликовано")
 		} else {
-			h.bot.Send(c.Chat(), "Прикрепите резюме в формате .pdf")
+			h.bot.Send(c.Chat(), "Прикрепите резюме в формате .pdf или .docx")
 		}
 	} else {
 		h.bot.Send(c.Chat(), "Заполните данные, перед отправкой резюме")
 	}
-
 	return nil
 }
 
 func (h *Handler) RegStudent(c bot.Context) error {
-	menu.Reply(
-		menu.Row(ViewResume),
-	)
+
 	id := c.Sender().ID
 	if _, ok := h.userQuestion[id]; !ok {
 		h.userQuestion[id] = 1
 		h.bot.Send(c.Chat(), "Заполните данные о себе:")
 	}
+	if h.userQuestion[id] == 3 {
+		category.Inline(
+			category.Row(btnC1, btnC2, btnC3),
+			category.Row(btnC4, btnC5, btnC6),
+			category.Row(btnC7),
+		)
+		h.bot.Send(c.Chat(), h.mQuestion[h.userQuestion[id]], category)
+		return nil
+	}
 	h.bot.Send(c.Chat(), h.mQuestion[h.userQuestion[id]])
+	return nil
+}
+func (h *Handler) btnC1(c bot.Context) error {
+	id := c.Sender().ID
+	data := c.Data()
+	st := h.userReg[id]
+	st.Category = data
+	h.userReg[id] = st
+	h.userQuestion[id]++
+	h.RegStudent(c)
 	return nil
 }
 
@@ -176,7 +257,7 @@ func (h *Handler) RegEmployee(c bot.Context) error {
 	if err != nil {
 		return err
 	}
-	urlPDF := fmt.Sprintf("src\\pdf\\%d.pdf", user.TgId)
+	urlPDF := fmt.Sprintf("src\\resume\\%d.pdf", user.Tgid)
 	resume := fmt.Sprintf("ФИО: %s\nГруппа: %s\nКатегория: %s\n", user.Fio, user.Group, user.Category)
 	file := &bot.Photo{
 		File:    bot.FromDisk(urlPDF),
