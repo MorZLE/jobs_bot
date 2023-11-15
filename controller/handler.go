@@ -61,12 +61,11 @@ func (h *Handler) Start() {
 	h.bot.Handle(&btnMainMenu, h.HandlerStart)
 	h.bot.Handle(&btnEmployee, h.Employee)
 	h.bot.Handle(&btnViewResumeStudents, h.btnCategorySelect)
-	h.bot.Handle(&btnCreateVacance, h.btnCreateResume)
+	h.bot.Handle(&btnCreateResume, h.btnCreateResume)
 	//h.bot.Handle(&btnCategorySelect, h.btnCategorySelect)
 
 	h.bot.Handle(&ViewResume, h.ViewRes)
-	h.bot.Handle(&btnStudent, h.StudentDefault)
-	h.bot.Handle(&CreateResume, h.RegStudent)
+	h.bot.Handle(&btnStudent, h.RegStudent)
 
 	h.bot.Handle(bot.OnText, h.Text)
 	h.bot.Handle(bot.OnDocument, h.Document)
@@ -103,18 +102,16 @@ var (
 	btnStudent  = menu.Text("Я студент")
 
 	btnViewResumeStudents = employee.Text("Просмотреть резюме")
-	btnCreateVacance      = employee.Text("Выложить вакансию")
+	btnCreateResume       = employee.Text("Выложить вакансию")
 	btnCategorySelect     = employee.Text("Выбор категории")
 	btnMainMenu           = employee.Text("Главное меню")
-
-	CreateResume = menu.Data("Создать резюме", "createResume")
 
 	ViewResume    = menu.Text("Профиль")
 	ReviewResume  = menu.Data("Изменить резюме", "review")
 	DeleteProfile = menu.Data("Удалить профиль", "deleteProfile")
 
 	btnPrev  = selector.Data("⬅", "prev")
-	btnOffer = selector.Data("Предложить работу", "Offer")
+	btnOffer = selector.Data("Предложить работу", "prev")
 	btnNext  = selector.Data("➡", "next")
 )
 
@@ -132,44 +129,24 @@ func (h *Handler) HandlerStart(c bot.Context) error {
 	menu.Reply(
 		menu.Row(btnEmployee),
 		menu.Row(btnStudent),
+		menu.Row(ViewResume),
 	)
 	return c.Send("Привет! Я бот, который поможет тебе найти работу!", menu)
-}
-
-func (h *Handler) StudentDefault(c bot.Context) error {
-	menu.Reply(
-		menu.Row(btnMainMenu),
-	)
-	profile.Inline(
-		profile.Row(CreateResume),
-	)
-	h.userType[c.Sender().ID] = constants.Student
-	user, err := h.s.Get(c.Sender().ID)
-	if err != nil {
-		log.Println(err)
-	}
-	if user != (model.Student{}) {
-		return h.ViewRes(c)
-	}
-	return c.Send("У вас еще нет резюме \n", profile)
-
 }
 
 func (h *Handler) Employee(c bot.Context) error {
 	employee.Reply(
 		employee.Row(btnViewResumeStudents),
-		employee.Row(btnCreateVacance),
+		employee.Row(btnCreateResume),
 		employee.Row(btnMainMenu),
 	)
 	h.userType[c.Sender().ID] = constants.Employee
 	return c.Send("Выберите действие", employee)
 }
-
 func (h *Handler) btnCreateResume(c bot.Context) error {
 	h.bot.Send(c.Chat(), "Скоро будет возможность выложить вакансию :)")
 	return nil
 }
-
 func (h *Handler) ViewRes(c bot.Context) error {
 	profile.Inline(
 		profile.Row(ReviewResume),
@@ -251,15 +228,7 @@ func (h *Handler) Document(c bot.Context) error {
 	doc := c.Message().Document
 	id := c.Sender().ID
 	var pdfPath string
-	if doc == nil {
-		h.bot.Send(c.Chat(), "Прикрепите резюме в формате .pdf")
-		return nil
-	}
 	if h.userQuestion[id] == 4 {
-		if doc.FileName == "" {
-			h.bot.Send(c.Chat(), "Прикрепите резюме в формате .pdf")
-			return nil
-		}
 		if ok := strings.HasSuffix(doc.FileName, ".pdf"); ok {
 			err := h.s.SaveResume(h.userReg[id])
 			if err != nil {
@@ -275,10 +244,8 @@ func (h *Handler) Document(c bot.Context) error {
 				return err
 			}
 			h.bot.Send(c.Chat(), "Ваше резюме опубликовано")
-			h.ViewRes(c)
-			return nil
 		} else {
-			h.bot.Send(c.Chat(), "Прикрепите резюме в формате .pdf")
+			h.bot.Send(c.Chat(), "Прикрепите резюме в формате .pdf или .docx")
 		}
 	} else {
 		h.bot.Send(c.Chat(), "Заполните данные, перед отправкой резюме")
