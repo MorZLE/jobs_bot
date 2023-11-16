@@ -7,6 +7,6 @@ import (
 type Service interface {
 	SaveResume(user model.Student) error
 	Get(id int64) (model.Student, error)
-	Delete(id int64) error
-	GetResume(category string, count int) (model.Student, error)
+	Delete(id int64, category string) error
+	GetResume(category string, count int, direction string) (model.Student, int, error)
 }

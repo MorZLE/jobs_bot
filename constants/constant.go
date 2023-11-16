@@ -7,3 +7,11 @@ const (
 	pdf  = ".pdf"
 	docx = ".docx"
 )
+
+const StatusDeleted = "deleted"
+
+const (
+	Next  = "next"
+	Prev  = "prev"
+	Offer = "offer"
+)

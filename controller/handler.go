@@ -200,7 +200,13 @@ func (h *Handler) ViewRes(c bot.Context) error {
 
 func (h *Handler) DeleteProfile(c bot.Context) error {
 	id := c.Sender().ID
-	err := h.s.Delete(id)
+	user, err := h.s.Get(id)
+	if err != nil {
+		log.Println(err)
+		h.bot.Send(c.Chat(), "Произошла ошибка")
+		return err
+	}
+	err = h.s.Delete(id, user.Category)
 	if err != nil {
 		log.Println(err)
 		h.bot.Send(c.Chat(), "Произошла ошибка")
@@ -214,7 +220,13 @@ func (h *Handler) DeleteProfile(c bot.Context) error {
 
 func (h *Handler) ReviewResume(c bot.Context) error {
 	id := c.Sender().ID
-	err := h.s.Delete(id)
+	user, err := h.s.Get(id)
+	if err != nil {
+		log.Println(err)
+		h.bot.Send(c.Chat(), "Произошла ошибка")
+		return err
+	}
+	err = h.s.Delete(id, user.Category)
 	if err != nil {
 		log.Println(err)
 		h.bot.Send(c.Chat(), "Произошла ошибка")
@@ -338,7 +350,7 @@ func (h *Handler) btnC1(c bot.Context) error {
 		h.RegStudent(c)
 	case constants.Employee:
 		h.employeeCategory[id] = data
-		h.ViewResumeStudents(c)
+		h.ViewResumeStudents(c, constants.Next)
 	}
 	return nil
 }
@@ -353,7 +365,7 @@ func (h *Handler) btnCategorySelect(c bot.Context) error {
 	return nil
 }
 
-func (h *Handler) ViewResumeStudents(c bot.Context) error {
+func (h *Handler) ViewResumeStudents(c bot.Context, dir string) error {
 	id := c.Sender().ID
 
 	selector.Inline(
@@ -363,7 +375,7 @@ func (h *Handler) ViewResumeStudents(c bot.Context) error {
 		selector.Row(btnCategorySelect),
 	)
 
-	user, err := h.s.GetResume(h.employeeCategory[c.Sender().ID], h.employeeCount[id])
+	user, count, err := h.s.GetResume(h.employeeCategory[c.Sender().ID], h.employeeCount[id], dir)
 	if err != nil {
 		if errors.Is(err, constants.ErrNotCategory) {
 			h.bot.Send(c.Chat(), "Категория не найдена")
@@ -379,23 +391,24 @@ func (h *Handler) ViewResumeStudents(c bot.Context) error {
 		}
 		log.Println(err)
 	}
+	h.employeeCount[id] = count
 	urlPDF := fmt.Sprintf("src\\resume\\%d%s", user.Tgid, user.Resume)
 	resume := fmt.Sprintf("ФИО: %s\nГруппа: %s\nКатегория: %s\n", user.Fio, user.Group, user.Category)
 	file := &bot.Photo{
 		File:    bot.FromDisk(urlPDF),
 		Caption: resume,
 	}
-	_, err = h.bot.Send(c.Chat(), file, selector)
+	h.bot.Send(c.Chat(), file, selector)
 	if err != nil {
-		return err
+		h.bot.Send(c.Chat(), "Что то пошло не так")
 	}
-
 	return nil
 }
+
 func (h *Handler) Next(c bot.Context) error {
 	id := c.Sender().ID
 	h.employeeCount[id]++
-	h.ViewResumeStudents(c)
+	h.ViewResumeStudents(c, constants.Next)
 	return nil
 }
 func (h *Handler) Prev(c bot.Context) error {
@@ -403,12 +416,12 @@ func (h *Handler) Prev(c bot.Context) error {
 	if h.employeeCount[id] > 0 {
 		h.employeeCount[id]--
 	}
-	h.ViewResumeStudents(c)
+	h.ViewResumeStudents(c, constants.Prev)
 	return nil
 }
 func (h *Handler) Offer(c bot.Context) error {
 	id := c.Sender().ID
-	user, err := h.s.GetResume(h.employeeCategory[id], h.employeeCount[id])
+	user, _, err := h.s.GetResume(h.employeeCategory[id], h.employeeCount[id], constants.Offer)
 	if err != nil {
 		if errors.Is(err, constants.ErrNotCategory) {
 			h.bot.Send(c.Chat(), "Категория не найдена")
