@@ -12,6 +12,9 @@ import (
 	"log"
 )
 
+var Category = []string{"Разработчик", "ИБ", "Дизайнер", "Системный администратор",
+	"Банковское дело", "Страховой агент", "Мечтатель"}
+
 func NewRepository(cnf *config.Config) (Storage, error) {
 	//ctx := context.TODO()
 	//config := dockerdb.EmptyConfig().DBName("dbjobsbot").DBUser("fl0user").
@@ -31,9 +34,8 @@ func NewRepository(cnf *config.Config) (Storage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
-	category := []string{"Разработчик", "Инфо без-ть", "Системный ад-р", "Банковское дело", "Страховой агент", "Мечтатель", "Дизайнер"}
 	mCategory := make(map[string][]model.Student)
-	for _, c := range category {
+	for _, c := range Category {
 		var students []model.Student
 		err := db.Where("category = ?", c).Find(&students).Error
 		if err != nil {

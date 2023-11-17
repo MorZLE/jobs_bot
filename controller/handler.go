@@ -6,6 +6,7 @@ import (
 	"github.com/MorZLE/jobs_bot/config"
 	"github.com/MorZLE/jobs_bot/constants"
 	"github.com/MorZLE/jobs_bot/model"
+	"github.com/MorZLE/jobs_bot/repository"
 	"github.com/MorZLE/jobs_bot/service"
 	bot "gopkg.in/telebot.v3"
 	"log"
@@ -30,30 +31,34 @@ func NewHandler(s service.Service, cnf *config.Config) (*Handler, error) {
 		3: "Сфера деятельности",
 		4: "Прикрепите резюме в формате .pdf одной страницей",
 	}
-
 	return &Handler{
-		s:                s,
-		bot:              b,
-		dir:              cnf.Dir,
-		mQuestion:        mQestion,
-		userType:         make(map[int64]string),
-		userReg:          make(map[int64]model.Student),
-		userQuestion:     make(map[int64]int),
-		employeeCount:    make(map[int64]int),
-		employeeCategory: make(map[int64]string),
+		s:         s,
+		bot:       b,
+		dir:       cnf.Dir,
+		mQuestion: mQestion,
+		user:      make(map[int64]model.User),
+
+		userType:            make(map[int64]string),
+		userReg:             make(map[int64]model.Student),
+		userQuestion:        make(map[int64]int),
+		employeeCount:       make(map[int64]int),
+		employeeCategory:    make(map[int64]string),
+		employeeSetCategory: make(map[int64]bool),
 	}, nil
 }
 
 type Handler struct {
-	s                service.Service
-	bot              *bot.Bot
-	dir              string
-	mQuestion        map[int]string          //Вопросы
-	userReg          map[int64]model.Student //Структура студента при регистрации и id студента
-	userQuestion     map[int64]int           //Номер вопроса и индекс студента
-	employeeCount    map[int64]int           // Номер просматриваемого резюме и id работодателя
-	employeeCategory map[int64]string        // Категория просматриваемого резюме и id работодателя
-	userType         map[int64]string        // Тип пользователя работодатель или студент
+	s                   service.Service
+	bot                 *bot.Bot
+	dir                 string
+	user                map[int64]model.User
+	mQuestion           map[int]string          //Вопросы
+	userReg             map[int64]model.Student //Структура студента при регистрации и id студента
+	userQuestion        map[int64]int           //Номер вопроса и индекс студента
+	employeeCount       map[int64]int           // Номер просматриваемого резюме и id работодателя
+	employeeCategory    map[int64]string        // Категория просматриваемого резюме и id работодателя
+	userType            map[int64]string        // Тип пользователя работодатель или студент
+	employeeSetCategory map[int64]bool          // Флаг смены категории у работодателей
 }
 
 func (h *Handler) Start() {
@@ -61,7 +66,6 @@ func (h *Handler) Start() {
 	h.bot.Handle(&btnMainMenu, h.HandlerStart)
 	h.bot.Handle(&btnEmployee, h.Employee)
 	h.bot.Handle(&btnViewResumeStudents, h.btnCategorySelect)
-	h.bot.Handle(&btnCreateVacance, h.btnCreateResume)
 	//h.bot.Handle(&btnCategorySelect, h.btnCategorySelect)
 
 	h.bot.Handle(&ViewResume, h.ViewRes)
@@ -95,17 +99,15 @@ var (
 	selector = &bot.ReplyMarkup{}
 	profile  = &bot.ReplyMarkup{}
 	category = &bot.ReplyMarkup{}
-	employee = &bot.ReplyMarkup{}
 
 	// Reply buttons.
 
 	btnEmployee = menu.Text("Я работодатель")
 	btnStudent  = menu.Text("Я студент")
 
-	btnViewResumeStudents = employee.Text("Просмотреть резюме")
-	btnCreateVacance      = employee.Text("Выложить вакансию")
-	btnCategorySelect     = employee.Text("Выбор категории")
-	btnMainMenu           = employee.Text("Главное меню")
+	btnViewResumeStudents = menu.Text("Просмотреть резюме")
+	//btnCategorySelect     = selector.Text("Выбор категории")
+	btnMainMenu = menu.Text("Главное меню")
 
 	CreateResume = menu.Data("Создать резюме", "createResume")
 
@@ -114,18 +116,20 @@ var (
 	DeleteProfile = menu.Data("Удалить профиль", "deleteProfile")
 
 	btnPrev  = selector.Data("⬅", "prev")
-	btnOffer = selector.Data("Предложить работу", "Offer")
+	btnOffer = selector.Data("Написать", "Offer")
 	btnNext  = selector.Data("➡", "next")
 )
 
+var cat = repository.Category
+
 var (
-	btnC1 = category.Data("Разработчик", "btnC1", "Разработчик")
-	btnC2 = category.Data("Инфо без-ть", "btnC2", "Инфо без-ть")
-	btnC3 = category.Data("Дизайнер", "btnC3", "Дизайнер")
-	btnC4 = category.Data("Системный ад-р", "btnC4", "Системный ад-р")
-	btnC5 = category.Data("Банковское дело", "btnC5", "Банковское дело")
-	btnC6 = category.Data("Страховой агент", "btnC6", "Страховой агент")
-	btnC7 = category.Data("Мечтатель", "btnC7", "Мечтатель")
+	btnC1 = category.Data(cat[0], "btnC1", cat[0])
+	btnC2 = category.Data(cat[1], "btnC2", cat[1])
+	btnC3 = category.Data(cat[2], "btnC3", cat[2])
+	btnC4 = category.Data(cat[3], "btnC4", cat[3])
+	btnC5 = category.Data(cat[4], "btnC5", cat[4])
+	btnC6 = category.Data(cat[5], "btnC6", cat[5])
+	btnC7 = category.Data(cat[6], "btnC7", cat[6])
 )
 
 func (h *Handler) HandlerStart(c bot.Context) error {
@@ -133,6 +137,10 @@ func (h *Handler) HandlerStart(c bot.Context) error {
 		menu.Row(btnEmployee),
 		menu.Row(btnStudent),
 	)
+	m := model.User{
+		Student: model.Student{},
+	}
+	h.user[c.Sender().ID] = m
 	return c.Send("Привет! Я бот, который поможет тебе найти работу!", menu)
 }
 
@@ -143,7 +151,7 @@ func (h *Handler) StudentDefault(c bot.Context) error {
 	profile.Inline(
 		profile.Row(CreateResume),
 	)
-	h.userType[c.Sender().ID] = constants.Student
+	h.user[c.Sender().ID].Type = constants.Student
 	user, err := h.s.Get(c.Sender().ID)
 	if err != nil {
 		log.Println(err)
@@ -156,18 +164,12 @@ func (h *Handler) StudentDefault(c bot.Context) error {
 }
 
 func (h *Handler) Employee(c bot.Context) error {
-	employee.Reply(
-		employee.Row(btnViewResumeStudents),
-		employee.Row(btnCreateVacance),
-		employee.Row(btnMainMenu),
+	menu.Reply(
+		menu.Row(btnViewResumeStudents),
+		menu.Row(btnMainMenu),
 	)
 	h.userType[c.Sender().ID] = constants.Employee
-	return c.Send("Выберите действие", employee)
-}
-
-func (h *Handler) btnCreateResume(c bot.Context) error {
-	h.bot.Send(c.Chat(), "Скоро будет возможность выложить вакансию :)")
-	return nil
+	return c.Send("Выберите действие", menu)
 }
 
 func (h *Handler) ViewRes(c bot.Context) error {
@@ -328,8 +330,9 @@ func (h *Handler) RegStudent(c bot.Context) error {
 	}
 	if h.userQuestion[id] == 3 {
 		category.Inline(
-			category.Row(btnC1, btnC2, btnC3),
-			category.Row(btnC4, btnC5, btnC6),
+			category.Row(btnC1, btnC2),
+			category.Row(btnC3, btnC4),
+			category.Row(btnC5, btnC6),
 			category.Row(btnC7),
 		)
 		h.bot.Send(c.Chat(), h.mQuestion[h.userQuestion[id]], category)
@@ -352,15 +355,18 @@ func (h *Handler) btnC1(c bot.Context) error {
 		h.employeeCategory[id] = data
 		h.ViewResumeStudents(c, constants.Next)
 	}
+	//h.bot.Delete(c.Message())
 	return nil
 }
 func (h *Handler) btnCategorySelect(c bot.Context) error {
 	category.Inline(
-		category.Row(btnC1, btnC2, btnC3),
-		category.Row(btnC4, btnC5, btnC6),
+		category.Row(btnC1, btnC2),
+		category.Row(btnC3, btnC4),
+		category.Row(btnC5, btnC6),
 		category.Row(btnC7),
 	)
 	h.employeeCount[c.Sender().ID] = 0
+	h.employeeSetCategory[c.Sender().ID] = true
 	h.bot.Send(c.Chat(), "Выберите категорию резюме", category)
 	return nil
 }
@@ -370,9 +376,6 @@ func (h *Handler) ViewResumeStudents(c bot.Context, dir string) error {
 
 	selector.Inline(
 		selector.Row(btnPrev, btnOffer, btnNext),
-	)
-	category.Inline(
-		selector.Row(btnCategorySelect),
 	)
 
 	user, count, err := h.s.GetResume(h.employeeCategory[c.Sender().ID], h.employeeCount[id], dir)
@@ -398,7 +401,12 @@ func (h *Handler) ViewResumeStudents(c bot.Context, dir string) error {
 		File:    bot.FromDisk(urlPDF),
 		Caption: resume,
 	}
-	h.bot.Send(c.Chat(), file, selector)
+	if h.employeeSetCategory[id] {
+		h.bot.Send(c.Chat(), file, selector)
+	} else {
+		h.bot.Edit(c.Message(), file, selector)
+	}
+	h.employeeSetCategory[id] = false
 	if err != nil {
 		h.bot.Send(c.Chat(), "Что то пошло не так")
 	}
