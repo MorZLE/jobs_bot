@@ -37,28 +37,15 @@ func NewHandler(s service.Service, cnf *config.Config) (*Handler, error) {
 		dir:       cnf.Dir,
 		mQuestion: mQestion,
 		user:      make(map[int64]model.User),
-
-		userType:            make(map[int64]string),
-		userReg:             make(map[int64]model.Student),
-		userQuestion:        make(map[int64]int),
-		employeeCount:       make(map[int64]int),
-		employeeCategory:    make(map[int64]string),
-		employeeSetCategory: make(map[int64]bool),
 	}, nil
 }
 
 type Handler struct {
-	s                   service.Service
-	bot                 *bot.Bot
-	dir                 string
-	user                map[int64]model.User
-	mQuestion           map[int]string          //Вопросы
-	userReg             map[int64]model.Student //Структура студента при регистрации и id студента
-	userQuestion        map[int64]int           //Номер вопроса и индекс студента
-	employeeCount       map[int64]int           // Номер просматриваемого резюме и id работодателя
-	employeeCategory    map[int64]string        // Категория просматриваемого резюме и id работодателя
-	userType            map[int64]string        // Тип пользователя работодатель или студент
-	employeeSetCategory map[int64]bool          // Флаг смены категории у работодателей
+	s         service.Service
+	bot       *bot.Bot
+	dir       string
+	user      map[int64]model.User // модель пользователя
+	mQuestion map[int]string
 }
 
 func (h *Handler) Start() {
@@ -151,7 +138,10 @@ func (h *Handler) StudentDefault(c bot.Context) error {
 	profile.Inline(
 		profile.Row(CreateResume),
 	)
-	h.user[c.Sender().ID].Type = constants.Student
+	mUser := h.user[c.Sender().ID]
+	mUser.Type = constants.Student
+	h.user[c.Sender().ID] = mUser
+
 	user, err := h.s.Get(c.Sender().ID)
 	if err != nil {
 		log.Println(err)
@@ -168,7 +158,11 @@ func (h *Handler) Employee(c bot.Context) error {
 		menu.Row(btnViewResumeStudents),
 		menu.Row(btnMainMenu),
 	)
-	h.userType[c.Sender().ID] = constants.Employee
+
+	mUser := h.user[c.Sender().ID]
+	mUser.Type = constants.Employee
+	h.user[c.Sender().ID] = mUser
+
 	return c.Send("Выберите действие", menu)
 }
 
@@ -214,8 +208,11 @@ func (h *Handler) DeleteProfile(c bot.Context) error {
 		h.bot.Send(c.Chat(), "Произошла ошибка")
 		return err
 	}
-	h.userQuestion[id] = 0
-	delete(h.userQuestion, id)
+
+	mUser := h.user[c.Sender().ID]
+	mUser.Nqest = 0
+	h.user[c.Sender().ID] = mUser
+
 	h.bot.Send(c.Chat(), "Профиль удален, надеюсь вы нашли работу!")
 	return nil
 }
@@ -234,13 +231,20 @@ func (h *Handler) ReviewResume(c bot.Context) error {
 		h.bot.Send(c.Chat(), "Произошла ошибка")
 		return err
 	}
-	h.userQuestion[id] = 1
-	h.bot.Send(c.Chat(), h.mQuestion[h.userQuestion[id]])
+
+	mUser := h.user[c.Sender().ID]
+	mUser.Nqest = 1
+	h.user[c.Sender().ID] = mUser
+
+	h.bot.Send(c.Chat(), h.mQuestion[mUser.Nqest])
 	return nil
 }
 
 func (h *Handler) Text(c bot.Context) error {
-	if h.userType[c.Sender().ID] == constants.Student {
+	id := c.Sender().ID
+	mUser := h.user[id]
+
+	if mUser.Type == constants.Student {
 		data := c.Message().Text
 		if data == "" {
 			h.bot.Send(c.Chat(), "Введите данные")
@@ -251,21 +255,20 @@ func (h *Handler) Text(c bot.Context) error {
 			return nil
 		}
 		id := c.Sender().ID
-		switch h.userQuestion[id] {
+		switch mUser.Nqest {
 		case 1:
 			st := model.Student{
 				Tgid:     id,
 				Fio:      data,
 				Username: c.Sender().Username,
 			}
-			h.userReg[id] = st
-			h.userQuestion[id]++
+			mUser.Student = st
+			mUser.Nqest++
 		case 2:
-			st := h.userReg[id]
-			st.Group = data
-			h.userReg[id] = st
-			h.userQuestion[id]++
+			mUser.Student.Group = data
+			mUser.Nqest++
 		}
+		h.user[id] = mUser
 		h.RegStudent(c)
 	}
 	return nil
@@ -273,12 +276,14 @@ func (h *Handler) Text(c bot.Context) error {
 func (h *Handler) Document(c bot.Context) error {
 	doc := c.Message().Document
 	id := c.Sender().ID
+	mUser := h.user[id]
+
 	var pdfPath string
 	if doc == nil {
 		h.bot.Send(c.Chat(), h.mQuestion[4])
 		return nil
 	}
-	if h.userQuestion[id] == 4 {
+	if mUser.Nqest == 4 {
 		if doc.FileName == "" {
 			h.bot.Send(c.Chat(), h.mQuestion[4])
 			return nil
@@ -286,32 +291,25 @@ func (h *Handler) Document(c bot.Context) error {
 		if strings.HasSuffix(doc.FileName, ".pdf") {
 			if strings.HasSuffix(doc.FileName, ".pdf") {
 				pdfPath = fmt.Sprintf("%s\\src\\resume\\%d.pdf", h.dir, id)
-				us := h.userReg[id]
-				us.Resume = ".pdf"
-				h.userReg[id] = us
-			}
-			//if strings.HasSuffix(doc.FileName, ".docx") {
-			//	pdfPath = fmt.Sprintf("%s\\src\\resume\\%d.docx", h.dir, id)
-			//	us := h.userReg[id]
-			//	us.Resume = ".docx"
-			//	h.userReg[id] = us
-			//}
+				mUser := h.user[id]
+				mUser.Student.Resume = ".pdf"
 
-			err := h.s.SaveResume(h.userReg[id])
-			if err != nil {
-				log.Println(err)
-				h.bot.Send(c.Chat(), "Что то пошло не так")
-				return err
+				err := h.s.SaveResume(mUser.Student)
+				if err != nil {
+					log.Println(err)
+					h.bot.Send(c.Chat(), "Что то пошло не так")
+					return err
+				}
+				err = h.bot.Download(&doc.File, pdfPath)
+				if err != nil {
+					log.Println(err)
+					h.bot.Send(c.Chat(), "Что то пошло не так")
+					return err
+				}
+				h.bot.Send(c.Chat(), "Ваше резюме опубликовано")
+				h.ViewRes(c)
+				return nil
 			}
-			err = h.bot.Download(&doc.File, pdfPath)
-			if err != nil {
-				log.Println(err)
-				h.bot.Send(c.Chat(), "Что то пошло не так")
-				return err
-			}
-			h.bot.Send(c.Chat(), "Ваше резюме опубликовано")
-			h.ViewRes(c)
-			return nil
 		} else {
 			h.bot.Send(c.Chat(), h.mQuestion[4])
 		}
@@ -323,39 +321,44 @@ func (h *Handler) Document(c bot.Context) error {
 
 func (h *Handler) RegStudent(c bot.Context) error {
 	id := c.Sender().ID
-	h.userType[c.Sender().ID] = constants.Student
-	if _, ok := h.userQuestion[id]; !ok {
-		h.userQuestion[id] = 1
+	mUser := h.user[id]
+	mUser.Type = constants.Student
+	if mUser.Nqest == 0 {
+		mUser.Nqest = 1
+		h.user[id] = mUser
 		h.bot.Send(c.Chat(), "Заполните данные о себе:")
 	}
-	if h.userQuestion[id] == 3 {
+	if mUser.Nqest == 3 {
 		category.Inline(
 			category.Row(btnC1, btnC2),
 			category.Row(btnC3, btnC4),
 			category.Row(btnC5, btnC6),
 			category.Row(btnC7),
 		)
-		h.bot.Send(c.Chat(), h.mQuestion[h.userQuestion[id]], category)
+		h.bot.Send(c.Chat(), h.mQuestion[mUser.Nqest], category)
 		return nil
 	}
-	h.bot.Send(c.Chat(), h.mQuestion[h.userQuestion[id]])
+	h.bot.Send(c.Chat(), h.mQuestion[mUser.Nqest])
 	return nil
 }
 func (h *Handler) btnC1(c bot.Context) error {
 	id := c.Sender().ID
 	data := c.Data()
-	switch h.userType[id] {
+	mUser := h.user[id]
+	switch mUser.Type {
 	case constants.Student:
-		st := h.userReg[id]
-		st.Category = data
-		h.userReg[id] = st
-		h.userQuestion[id]++
+		mUser.Student.Category = data
+		mUser.Nqest++
+		h.user[id] = mUser
 		h.RegStudent(c)
 	case constants.Employee:
-		h.employeeCategory[id] = data
+		mUser.EmployeeCategory = data
+		mUser.EmployeeCount = 0
+		mUser.EmployeeSetCategory = true
+		h.user[id] = mUser
 		h.ViewResumeStudents(c, constants.Next)
 	}
-	//h.bot.Delete(c.Message())
+	//	h.bot.Delete(c.Message())
 	return nil
 }
 func (h *Handler) btnCategorySelect(c bot.Context) error {
@@ -365,20 +368,24 @@ func (h *Handler) btnCategorySelect(c bot.Context) error {
 		category.Row(btnC5, btnC6),
 		category.Row(btnC7),
 	)
-	h.employeeCount[c.Sender().ID] = 0
-	h.employeeSetCategory[c.Sender().ID] = true
+	id := c.Sender().ID
+	mUser := h.user[id]
+	mUser.EmployeeCount = 0
+	mUser.EmployeeSetCategory = true
+	h.user[id] = mUser
 	h.bot.Send(c.Chat(), "Выберите категорию резюме", category)
 	return nil
 }
 
 func (h *Handler) ViewResumeStudents(c bot.Context, dir string) error {
 	id := c.Sender().ID
+	mUser := h.user[id]
 
 	selector.Inline(
 		selector.Row(btnPrev, btnOffer, btnNext),
 	)
 
-	user, count, err := h.s.GetResume(h.employeeCategory[c.Sender().ID], h.employeeCount[id], dir)
+	user, count, err := h.s.GetResume(mUser.EmployeeCategory, mUser.EmployeeCount, dir)
 	if err != nil {
 		if errors.Is(err, constants.ErrNotCategory) {
 			h.bot.Send(c.Chat(), "Категория не найдена")
@@ -392,44 +399,49 @@ func (h *Handler) ViewResumeStudents(c bot.Context, dir string) error {
 			h.bot.Send(c.Chat(), "Нету резюме в данной категории")
 			return nil
 		}
+		h.bot.Send(c.Chat(), "Что то пошло не так")
 		log.Println(err)
 	}
-	h.employeeCount[id] = count
+	mUser.EmployeeCount = count
 	urlPDF := fmt.Sprintf("src\\resume\\%d%s", user.Tgid, user.Resume)
 	resume := fmt.Sprintf("ФИО: %s\nГруппа: %s\nКатегория: %s\n", user.Fio, user.Group, user.Category)
 	file := &bot.Photo{
 		File:    bot.FromDisk(urlPDF),
 		Caption: resume,
 	}
-	if h.employeeSetCategory[id] {
+	if mUser.EmployeeSetCategory {
 		h.bot.Send(c.Chat(), file, selector)
 	} else {
 		h.bot.Edit(c.Message(), file, selector)
 	}
-	h.employeeSetCategory[id] = false
-	if err != nil {
-		h.bot.Send(c.Chat(), "Что то пошло не так")
-	}
+	mUser.EmployeeSetCategory = false
+	h.user[id] = mUser
+
 	return nil
 }
 
 func (h *Handler) Next(c bot.Context) error {
 	id := c.Sender().ID
-	h.employeeCount[id]++
+	mUser := h.user[id]
+	mUser.EmployeeCount++
+	h.user[id] = mUser
 	h.ViewResumeStudents(c, constants.Next)
 	return nil
 }
 func (h *Handler) Prev(c bot.Context) error {
 	id := c.Sender().ID
-	if h.employeeCount[id] > 0 {
-		h.employeeCount[id]--
+	mUser := h.user[id]
+	if mUser.EmployeeCount > 0 {
+		mUser.EmployeeCount--
 	}
+	h.user[id] = mUser
 	h.ViewResumeStudents(c, constants.Prev)
 	return nil
 }
 func (h *Handler) Offer(c bot.Context) error {
 	id := c.Sender().ID
-	user, _, err := h.s.GetResume(h.employeeCategory[id], h.employeeCount[id], constants.Offer)
+	mUser := h.user[id]
+	user, _, err := h.s.GetResume(mUser.EmployeeCategory, mUser.EmployeeCount, constants.Offer)
 	if err != nil {
 		if errors.Is(err, constants.ErrNotCategory) {
 			h.bot.Send(c.Chat(), "Категория не найдена")
