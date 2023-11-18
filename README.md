@@ -6,7 +6,7 @@
 
 - Web : telebot
 - Configuration : GoDotEnv
-- Database : Postgres
+- Database : Postgres/gorm
 
 ## Architecture
 

@@ -1,1 +1,458 @@
 package controller
+
+import (
+	"errors"
+	"fmt"
+	"github.com/MorZLE/jobs_bot/config"
+	"github.com/MorZLE/jobs_bot/constants"
+	"github.com/MorZLE/jobs_bot/model"
+	"github.com/MorZLE/jobs_bot/repository"
+	"github.com/MorZLE/jobs_bot/service"
+	bot "gopkg.in/telebot.v3"
+	"log"
+	"strings"
+	"time"
+)
+
+func NewHandler(s service.Service, cnf *config.Config) (*Handler, error) {
+	pref := bot.Settings{
+		Token:  cnf.BotToken,
+		Poller: &bot.LongPoller{Timeout: 10 * time.Second},
+	}
+
+	b, err := bot.NewBot(pref)
+	if err != nil {
+		return nil, err
+	}
+	mQestion := map[int]string{
+
+		1: "Ваше ФИО",
+		2: "Ваша группа",
+		3: "Сфера деятельности",
+		4: "Прикрепите резюме в формате .pdf одной страницей",
+	}
+	return &Handler{
+		s:         s,
+		bot:       b,
+		dir:       cnf.Dir,
+		mQuestion: mQestion,
+		user:      make(map[int64]model.User),
+	}, nil
+}
+
+type Handler struct {
+	s         service.Service
+	bot       *bot.Bot
+	dir       string
+	user      map[int64]model.User // модель пользователя
+	mQuestion map[int]string
+}
+
+func (h *Handler) Start() {
+	h.bot.Handle("/start", h.HandlerStart)
+	h.bot.Handle(&btnMainMenu, h.HandlerStart)
+	h.bot.Handle(&btnEmployee, h.Employee)
+	h.bot.Handle(&btnViewResumeStudents, h.btnCategorySelect)
+	//h.bot.Handle(&btnCategorySelect, h.btnCategorySelect)
+
+	h.bot.Handle(&ViewResume, h.ViewRes)
+	h.bot.Handle(&btnStudent, h.StudentDefault)
+	h.bot.Handle(&CreateResume, h.RegStudent)
+
+	h.bot.Handle(bot.OnText, h.Text)
+	h.bot.Handle(bot.OnDocument, h.Document)
+	h.bot.Handle(bot.OnPhoto, h.Document)
+
+	h.bot.Handle(&btnNext, h.Next)
+	h.bot.Handle(&btnPrev, h.Prev)
+	h.bot.Handle(&btnOffer, h.Offer)
+	h.bot.Handle(&ReviewResume, h.ReviewResume)
+	h.bot.Handle(&DeleteProfile, h.DeleteProfile)
+
+	h.bot.Handle(&btnC1, h.btnC1)
+	h.bot.Handle(&btnC2, h.btnC1)
+	h.bot.Handle(&btnC3, h.btnC1)
+	h.bot.Handle(&btnC4, h.btnC1)
+	h.bot.Handle(&btnC5, h.btnC1)
+	h.bot.Handle(&btnC6, h.btnC1)
+	h.bot.Handle(&btnC7, h.btnC1)
+
+	h.bot.Start()
+	log.Println("Bot started")
+}
+
+var (
+	menu     = &bot.ReplyMarkup{ResizeKeyboard: true}
+	selector = &bot.ReplyMarkup{}
+	profile  = &bot.ReplyMarkup{}
+	category = &bot.ReplyMarkup{}
+
+	// Reply buttons.
+
+	btnEmployee = menu.Text("Я работодатель")
+	btnStudent  = menu.Text("Я студент")
+
+	btnViewResumeStudents = menu.Text("Просмотреть резюме")
+	//btnCategorySelect     = selector.Text("Выбор категории")
+	btnMainMenu = menu.Text("Главное меню")
+
+	CreateResume = menu.Data("Создать резюме", "createResume")
+
+	ViewResume    = menu.Text("Профиль")
+	ReviewResume  = menu.Data("Изменить резюме", "review")
+	DeleteProfile = menu.Data("Удалить профиль", "deleteProfile")
+
+	btnPrev  = selector.Data("⬅", "prev")
+	btnOffer = selector.Data("Написать", "Offer")
+	btnNext  = selector.Data("➡", "next")
+)
+
+var cat = repository.Category
+
+var (
+	btnC1 = category.Data(cat[0], "btnC1", cat[0])
+	btnC2 = category.Data(cat[1], "btnC2", cat[1])
+	btnC3 = category.Data(cat[2], "btnC3", cat[2])
+	btnC4 = category.Data(cat[3], "btnC4", cat[3])
+	btnC5 = category.Data(cat[4], "btnC5", cat[4])
+	btnC6 = category.Data(cat[5], "btnC6", cat[5])
+	btnC7 = category.Data(cat[6], "btnC7", cat[6])
+)
+
+func (h *Handler) HandlerStart(c bot.Context) error {
+	menu.Reply(
+		menu.Row(btnEmployee),
+		menu.Row(btnStudent),
+	)
+	m := model.User{
+		Student: model.Student{},
+	}
+	h.user[c.Sender().ID] = m
+	return c.Send("Привет! Я бот, который поможет тебе найти работу!", menu)
+}
+
+func (h *Handler) StudentDefault(c bot.Context) error {
+	menu.Reply(
+		menu.Row(btnMainMenu),
+	)
+	profile.Inline(
+		profile.Row(CreateResume),
+	)
+	mUser := h.user[c.Sender().ID]
+	mUser.Type = constants.Student
+	h.user[c.Sender().ID] = mUser
+
+	user, err := h.s.Get(c.Sender().ID)
+	if err != nil {
+		log.Println(err)
+	}
+	if user != (model.Student{}) {
+		return h.ViewRes(c)
+	}
+	return c.Send("У вас еще нет резюме \n", profile)
+
+}
+
+func (h *Handler) Employee(c bot.Context) error {
+	menu.Reply(
+		menu.Row(btnViewResumeStudents),
+		menu.Row(btnMainMenu),
+	)
+
+	mUser := h.user[c.Sender().ID]
+	mUser.Type = constants.Employee
+	h.user[c.Sender().ID] = mUser
+
+	return c.Send("Выберите действие", menu)
+}
+
+func (h *Handler) ViewRes(c bot.Context) error {
+	profile.Inline(
+		profile.Row(ReviewResume),
+		profile.Row(DeleteProfile),
+	)
+	user, err := h.s.Get(c.Sender().ID)
+	if err != nil {
+		log.Println(err)
+	}
+	if user == (model.Student{}) {
+		h.bot.Send(c.Chat(), "Профиль не найден")
+		return nil
+	}
+	urlPDF := fmt.Sprintf("src\\resume\\%d%s", user.Tgid, user.Resume)
+	fmt.Println(urlPDF)
+	resume := fmt.Sprintf("ФИО: %s\nГруппа: %s\nКатегория: %s\n", user.Fio, user.Group, user.Category)
+	file := &bot.Photo{
+		File:    bot.FromDisk(urlPDF),
+		Caption: resume,
+	}
+
+	_, err = h.bot.Send(c.Chat(), file, profile)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *Handler) DeleteProfile(c bot.Context) error {
+	id := c.Sender().ID
+	user, err := h.s.Get(id)
+	if err != nil {
+		log.Println(err)
+		h.bot.Send(c.Chat(), "Произошла ошибка")
+		return err
+	}
+	err = h.s.Delete(id, user.Category)
+	if err != nil {
+		log.Println(err)
+		h.bot.Send(c.Chat(), "Произошла ошибка")
+		return err
+	}
+
+	mUser := h.user[c.Sender().ID]
+	mUser.Nqest = 0
+	h.user[c.Sender().ID] = mUser
+
+	h.bot.Send(c.Chat(), "Профиль удален, надеюсь вы нашли работу!")
+	return nil
+}
+
+func (h *Handler) ReviewResume(c bot.Context) error {
+	id := c.Sender().ID
+	user, err := h.s.Get(id)
+	if err != nil {
+		log.Println(err)
+		h.bot.Send(c.Chat(), "Произошла ошибка")
+		return err
+	}
+	err = h.s.Delete(id, user.Category)
+	if err != nil {
+		log.Println(err)
+		h.bot.Send(c.Chat(), "Произошла ошибка")
+		return err
+	}
+
+	mUser := h.user[c.Sender().ID]
+	mUser.Nqest = 1
+	h.user[c.Sender().ID] = mUser
+
+	h.bot.Send(c.Chat(), h.mQuestion[mUser.Nqest])
+	return nil
+}
+
+func (h *Handler) Text(c bot.Context) error {
+	id := c.Sender().ID
+	mUser := h.user[id]
+
+	if mUser.Type == constants.Student {
+		data := c.Message().Text
+		if data == "" {
+			h.bot.Send(c.Chat(), "Введите данные")
+		}
+		if len(data) >= 100 {
+			h.bot.Send(c.Chat(), "Слишком длинное сообщение")
+			h.RegStudent(c)
+			return nil
+		}
+		id := c.Sender().ID
+		switch mUser.Nqest {
+		case 1:
+			st := model.Student{
+				Tgid:     id,
+				Fio:      data,
+				Username: c.Sender().Username,
+			}
+			mUser.Student = st
+			mUser.Nqest++
+		case 2:
+			mUser.Student.Group = data
+			mUser.Nqest++
+		}
+		h.user[id] = mUser
+		h.RegStudent(c)
+	}
+	return nil
+}
+func (h *Handler) Document(c bot.Context) error {
+	doc := c.Message().Document
+	id := c.Sender().ID
+	mUser := h.user[id]
+
+	var pdfPath string
+	if doc == nil {
+		h.bot.Send(c.Chat(), h.mQuestion[4])
+		return nil
+	}
+	if mUser.Nqest == 4 {
+		if doc.FileName == "" {
+			h.bot.Send(c.Chat(), h.mQuestion[4])
+			return nil
+		}
+		if strings.HasSuffix(doc.FileName, ".pdf") {
+			if strings.HasSuffix(doc.FileName, ".pdf") {
+				pdfPath = fmt.Sprintf("%s\\src\\resume\\%d.pdf", h.dir, id)
+				mUser := h.user[id]
+				mUser.Student.Resume = ".pdf"
+
+				err := h.s.SaveResume(mUser.Student)
+				if err != nil {
+					log.Println(err)
+					h.bot.Send(c.Chat(), "Что то пошло не так")
+					return err
+				}
+				err = h.bot.Download(&doc.File, pdfPath)
+				if err != nil {
+					log.Println(err)
+					h.bot.Send(c.Chat(), "Что то пошло не так")
+					return err
+				}
+				h.bot.Send(c.Chat(), "Ваше резюме опубликовано")
+				h.ViewRes(c)
+				return nil
+			}
+		} else {
+			h.bot.Send(c.Chat(), h.mQuestion[4])
+		}
+	} else {
+		h.bot.Send(c.Chat(), "Заполните данные, перед отправкой резюме")
+	}
+	return nil
+}
+
+func (h *Handler) RegStudent(c bot.Context) error {
+	id := c.Sender().ID
+	mUser := h.user[id]
+	mUser.Type = constants.Student
+	if mUser.Nqest == 0 {
+		mUser.Nqest = 1
+		h.user[id] = mUser
+		h.bot.Send(c.Chat(), "Заполните данные о себе:")
+	}
+	if mUser.Nqest == 3 {
+		category.Inline(
+			category.Row(btnC1, btnC2),
+			category.Row(btnC3, btnC4),
+			category.Row(btnC5, btnC6),
+			category.Row(btnC7),
+		)
+		h.bot.Send(c.Chat(), h.mQuestion[mUser.Nqest], category)
+		return nil
+	}
+	h.bot.Send(c.Chat(), h.mQuestion[mUser.Nqest])
+	return nil
+}
+func (h *Handler) btnC1(c bot.Context) error {
+	id := c.Sender().ID
+	data := c.Data()
+	mUser := h.user[id]
+	switch mUser.Type {
+	case constants.Student:
+		mUser.Student.Category = data
+		mUser.Nqest++
+		h.user[id] = mUser
+		h.RegStudent(c)
+	case constants.Employee:
+		mUser.EmployeeCategory = data
+		mUser.EmployeeCount = 0
+		mUser.EmployeeSetCategory = true
+		h.user[id] = mUser
+		h.ViewResumeStudents(c, constants.Next)
+	}
+	//	h.bot.Delete(c.Message())
+	return nil
+}
+func (h *Handler) btnCategorySelect(c bot.Context) error {
+	category.Inline(
+		category.Row(btnC1, btnC2),
+		category.Row(btnC3, btnC4),
+		category.Row(btnC5, btnC6),
+		category.Row(btnC7),
+	)
+	id := c.Sender().ID
+	mUser := h.user[id]
+	mUser.EmployeeCount = 0
+	mUser.EmployeeSetCategory = true
+	h.user[id] = mUser
+	h.bot.Send(c.Chat(), "Выберите категорию резюме", category)
+	return nil
+}
+
+func (h *Handler) ViewResumeStudents(c bot.Context, dir string) error {
+	id := c.Sender().ID
+	mUser := h.user[id]
+
+	selector.Inline(
+		selector.Row(btnPrev, btnOffer, btnNext),
+	)
+
+	user, count, err := h.s.GetResume(mUser.EmployeeCategory, mUser.EmployeeCount, dir)
+	if err != nil {
+		if errors.Is(err, constants.ErrNotCategory) {
+			h.bot.Send(c.Chat(), "Категория не найдена")
+			return nil
+		}
+		if errors.Is(err, constants.ErrNotFound) {
+			h.bot.Send(c.Chat(), "Резюме закончились")
+			return nil
+		}
+		if errors.Is(err, constants.ErrNotResume) {
+			h.bot.Send(c.Chat(), "Нету резюме в данной категории")
+			return nil
+		}
+		h.bot.Send(c.Chat(), "Что то пошло не так")
+		log.Println(err)
+	}
+	mUser.EmployeeCount = count
+	urlPDF := fmt.Sprintf("src\\resume\\%d%s", user.Tgid, user.Resume)
+	resume := fmt.Sprintf("ФИО: %s\nГруппа: %s\nКатегория: %s\n", user.Fio, user.Group, user.Category)
+	file := &bot.Photo{
+		File:    bot.FromDisk(urlPDF),
+		Caption: resume,
+	}
+	if mUser.EmployeeSetCategory {
+		h.bot.Send(c.Chat(), file, selector)
+	} else {
+		h.bot.Edit(c.Message(), file, selector)
+	}
+	mUser.EmployeeSetCategory = false
+	h.user[id] = mUser
+
+	return nil
+}
+
+func (h *Handler) Next(c bot.Context) error {
+	id := c.Sender().ID
+	mUser := h.user[id]
+	mUser.EmployeeCount++
+	h.user[id] = mUser
+	h.ViewResumeStudents(c, constants.Next)
+	return nil
+}
+func (h *Handler) Prev(c bot.Context) error {
+	id := c.Sender().ID
+	mUser := h.user[id]
+	if mUser.EmployeeCount > 0 {
+		mUser.EmployeeCount--
+	}
+	h.user[id] = mUser
+	h.ViewResumeStudents(c, constants.Prev)
+	return nil
+}
+func (h *Handler) Offer(c bot.Context) error {
+	id := c.Sender().ID
+	mUser := h.user[id]
+	user, _, err := h.s.GetResume(mUser.EmployeeCategory, mUser.EmployeeCount, constants.Offer)
+	if err != nil {
+		if errors.Is(err, constants.ErrNotCategory) {
+			h.bot.Send(c.Chat(), "Категория не найдена")
+			return nil
+		}
+		if errors.Is(err, constants.ErrNotFound) {
+			h.bot.Send(c.Chat(), "Профиль не найден")
+			return nil
+		}
+		log.Println(err)
+	}
+	h.bot.Send(c.Chat(), fmt.Sprintf("Надеюсь вам понравится этот кандидат, его профиль: @%s", user.Username))
+	return nil
+}
