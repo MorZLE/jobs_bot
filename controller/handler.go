@@ -11,6 +11,7 @@ import (
 	bot "gopkg.in/telebot.v3"
 	"log"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -46,14 +47,13 @@ type Handler struct {
 	dir       string
 	user      map[int64]model.User // модель пользователя
 	mQuestion map[int]string
+	mutex     sync.RWMutex
 }
 
 func (h *Handler) Start() {
 	h.bot.Handle("/start", h.HandlerStart)
 	h.bot.Handle(&btnMainMenu, h.HandlerStart)
 	h.bot.Handle(&btnEmployee, h.Employee)
-	//h.bot.Handle(&btnEmployee, h.btnCategorySelect)
-	//h.bot.Handle(&btnCategorySelect, h.btnCategorySelect)
 
 	h.bot.Handle(&ViewResume, h.ViewRes)
 	h.bot.Handle(&btnStudent, h.StudentDefault)
@@ -159,7 +159,9 @@ func (h *Handler) HandlerStart(c bot.Context) error {
 			Student: model.Student{},
 		}
 	}
+	h.mutex.Lock()
 	h.user[c.Sender().ID] = m
+	h.mutex.Unlock()
 	return c.Send("Привет! Я бот, который поможет тебе найти работу!", menu)
 }
 
@@ -172,7 +174,10 @@ func (h *Handler) StudentDefault(c bot.Context) error {
 	)
 	mUser := h.user[c.Sender().ID]
 	mUser.Type = constants.Student
+
+	h.mutex.Lock()
 	h.user[c.Sender().ID] = mUser
+	h.mutex.Unlock()
 
 	user, err := h.s.Get(c.Sender().ID)
 	if err != nil {
@@ -182,11 +187,12 @@ func (h *Handler) StudentDefault(c bot.Context) error {
 		return h.ViewRes(c)
 	}
 	return c.Send("У вас еще нет резюме \n", profile)
-
 }
 
 func (h *Handler) Employee(c bot.Context) error {
+	h.mutex.Lock()
 	mUser := h.user[c.Sender().ID]
+	h.mutex.Unlock()
 	mUser.Type = constants.Employee
 	h.user[c.Sender().ID] = mUser
 
@@ -206,6 +212,13 @@ func (h *Handler) ViewRes(c bot.Context) error {
 		h.bot.Send(c.Chat(), "Профиль не найден")
 		return nil
 	}
+	h.mutex.Lock()
+	h.user[c.Sender().ID] = model.User{
+		Student: user,
+		Type:    constants.Student,
+	}
+	h.mutex.Unlock()
+
 	urlPDF := fmt.Sprintf("src\\resume\\%d%s", user.Tgid, user.Resume)
 	fmt.Println(urlPDF)
 	resume := fmt.Sprintf("ФИО: %s\nГруппа: %s\nКатегория: %s\n", user.Fio, user.Group, user.Category)
@@ -238,7 +251,9 @@ func (h *Handler) DeleteProfile(c bot.Context) error {
 
 	mUser := h.user[c.Sender().ID]
 	mUser.Nqest = 0
+	h.mutex.Lock()
 	h.user[c.Sender().ID] = mUser
+	h.mutex.Unlock()
 
 	h.bot.Send(c.Chat(), "Профиль удален, надеюсь вы нашли работу!")
 	return nil
@@ -258,8 +273,10 @@ func (h *Handler) ReviewResume(c bot.Context) error {
 		h.bot.Send(c.Chat(), "Произошла ошибка")
 		return err
 	}
-
+	h.mutex.Lock()
 	mUser := h.user[c.Sender().ID]
+	h.mutex.Unlock()
+
 	mUser.Nqest = 1
 	h.user[c.Sender().ID] = mUser
 
@@ -270,9 +287,6 @@ func (h *Handler) ReviewResume(c bot.Context) error {
 func (h *Handler) Text(c bot.Context) error {
 	id := c.Sender().ID
 	mUser := h.user[id]
-	if mUser.Student.Status == constants.StatusPublished {
-		return nil
-	}
 	if mUser.Type == constants.Student {
 		data := c.Message().Text
 		if data == "" {
@@ -297,7 +311,9 @@ func (h *Handler) Text(c bot.Context) error {
 			mUser.Student.Group = data
 			mUser.Nqest++
 		}
+		h.mutex.Lock()
 		h.user[id] = mUser
+		h.mutex.Unlock()
 		h.RegStudent(c)
 	}
 	return nil
@@ -305,12 +321,8 @@ func (h *Handler) Text(c bot.Context) error {
 func (h *Handler) Document(c bot.Context) error {
 	doc := c.Message().Document
 	id := c.Sender().ID
-	mUser := h.user[id]
-	if mUser.Student.Status == constants.StatusPublished {
-		return nil
-	}
-
 	var pdfPath string
+	mUser := h.user[id]
 	if doc == nil {
 		h.bot.Send(c.Chat(), h.mQuestion[4])
 		return nil
@@ -354,23 +366,16 @@ func (h *Handler) Document(c bot.Context) error {
 func (h *Handler) RegStudent(c bot.Context) error {
 	id := c.Sender().ID
 	mUser := h.user[id]
-
-	if mUser.Student.Status == constants.StatusPublished {
-		return nil
-	}
 	mUser.Type = constants.Student
 	if mUser.Nqest == 0 {
 		mUser.Nqest = 1
+		h.mutex.Lock()
 		h.user[id] = mUser
+		h.mutex.Unlock()
 		h.bot.Send(c.Chat(), "Заполните данные о себе:")
 	}
 	if mUser.Nqest == 3 {
-		category.Inline(
-			category.Row(btnC1, btnC2),
-			category.Row(btnC3, btnC4),
-			category.Row(btnC5, btnC6),
-			category.Row(btnC7),
-		)
+		category := GetCategory()
 		h.bot.Send(c.Chat(), h.mQuestion[mUser.Nqest], category)
 		return nil
 	}
@@ -385,19 +390,23 @@ func (h *Handler) btnC1(c bot.Context) error {
 	case constants.Student:
 		mUser.Student.Category = data
 		mUser.Nqest++
+		h.mutex.Lock()
 		h.user[id] = mUser
+		h.mutex.Unlock()
 		h.RegStudent(c)
+		h.bot.Delete(c.Message())
 	case constants.Employee:
 		mUser.EmployeeCategory = data
 		mUser.EmployeeCount = 0
 		mUser.EmployeeSetCategory = true
+		h.mutex.Lock()
 		h.user[id] = mUser
+		h.mutex.Unlock()
 		h.ViewResumeStudents(c, constants.Next)
 	}
-	//	h.bot.Delete(c.Message())
 	return nil
 }
-func (h *Handler) btnCategorySelect(c bot.Context) error {
+func GetCategory() *bot.ReplyMarkup {
 	category.Inline(
 		category.Row(btnC1),
 		category.Row(btnC2),
@@ -418,11 +427,17 @@ func (h *Handler) btnCategorySelect(c bot.Context) error {
 		category.Row(btnC17),
 		category.Row(btnC18),
 	)
+	return category
+}
+func (h *Handler) btnCategorySelect(c bot.Context) error {
+	category := GetCategory()
 	id := c.Sender().ID
 	mUser := h.user[id]
 	mUser.EmployeeCount = 0
 	mUser.EmployeeSetCategory = true
+	h.mutex.Lock()
 	h.user[id] = mUser
+	h.mutex.Unlock()
 	_, err := h.bot.Send(c.Chat(), "Выберите категорию резюме", category)
 	if err != nil {
 		log.Println(err)
@@ -432,6 +447,7 @@ func (h *Handler) btnCategorySelect(c bot.Context) error {
 
 func (h *Handler) ViewResumeStudents(c bot.Context, dir string) error {
 	id := c.Sender().ID
+
 	mUser := h.user[id]
 
 	user, count, err := h.s.GetResume(mUser.EmployeeCategory, mUser.EmployeeCount, dir)
@@ -486,16 +502,20 @@ func (h *Handler) ViewResumeStudents(c bot.Context, dir string) error {
 		h.bot.Edit(c.Message(), file, selector)
 	}
 	mUser.EmployeeSetCategory = false
+	h.mutex.Lock()
 	h.user[id] = mUser
-
+	h.mutex.Unlock()
 	return nil
 }
 
 func (h *Handler) Next(c bot.Context) error {
 	id := c.Sender().ID
+
 	mUser := h.user[id]
 	mUser.EmployeeCount++
+	h.mutex.Lock()
 	h.user[id] = mUser
+	h.mutex.Unlock()
 	h.ViewResumeStudents(c, constants.Next)
 	return nil
 }
@@ -505,7 +525,9 @@ func (h *Handler) Prev(c bot.Context) error {
 	if mUser.EmployeeCount > 0 {
 		mUser.EmployeeCount--
 	}
+	h.mutex.Lock()
 	h.user[id] = mUser
+	h.mutex.Unlock()
 	h.ViewResumeStudents(c, constants.Prev)
 	return nil
 }

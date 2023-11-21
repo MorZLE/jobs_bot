@@ -128,9 +128,13 @@ func (r *repository) GetOneResume(category string, direction string, count int) 
 		return r.m[category][count], nil
 	default:
 		res := r.m[category][count]
+		if res.Status == constants.StatusDeleted && len(r.m[category]) == count+1 {
+			return model.Student{}, constants.ErrNotFound
+		}
 		if res.Status == constants.StatusDeleted {
 			return model.Student{}, constants.ErrDeleteResume
 		}
+
 	}
 	if len(r.m[category]) == count+1 {
 		return r.m[category][count], constants.ErrLastResume
