@@ -248,10 +248,10 @@ func (h *Handler) DeleteProfile(c bot.Context) error {
 		h.bot.Send(c.Chat(), "Произошла ошибка")
 		return err
 	}
-
+	h.mutex.Lock()
 	mUser := h.user[c.Sender().ID]
 	mUser.Nqest = 0
-	h.mutex.Lock()
+	mUser.Student.Status = constants.StatusDeleted
 	h.user[c.Sender().ID] = mUser
 	h.mutex.Unlock()
 
@@ -275,11 +275,10 @@ func (h *Handler) ReviewResume(c bot.Context) error {
 	}
 	h.mutex.Lock()
 	mUser := h.user[c.Sender().ID]
-	h.mutex.Unlock()
-
+	mUser.Student.Status = constants.StatusDeleted
 	mUser.Nqest = 1
 	h.user[c.Sender().ID] = mUser
-
+	h.mutex.Unlock()
 	h.bot.Send(c.Chat(), h.mQuestion[mUser.Nqest])
 	return nil
 }
@@ -366,6 +365,9 @@ func (h *Handler) Document(c bot.Context) error {
 func (h *Handler) RegStudent(c bot.Context) error {
 	id := c.Sender().ID
 	mUser := h.user[id]
+	if mUser.Student.Status == constants.StatusPublished {
+		return nil
+	}
 	mUser.Type = constants.Student
 	if mUser.Nqest == 0 {
 		mUser.Nqest = 1
@@ -388,6 +390,12 @@ func (h *Handler) btnC1(c bot.Context) error {
 	mUser := h.user[id]
 	switch mUser.Type {
 	case constants.Student:
+		if mUser.Student.Status == constants.StatusPublished {
+			return nil
+		}
+		if mUser.Nqest != 3 {
+			return nil
+		}
 		mUser.Student.Category = data
 		mUser.Nqest++
 		h.mutex.Lock()

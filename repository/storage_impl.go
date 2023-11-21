@@ -34,15 +34,6 @@ var Category = []string{
 }
 
 func NewRepository(cnf *config.Config) (Storage, error) {
-	//ctx := context.TODO()
-	//config := dockerdb.EmptyConfig().DBName("dbjobsbot").DBUser("fl0user").
-	//	DBPassword("kYLDaq9SdN8f").StandardDBPort("5432").
-	//	Vendor(dockerdb.Postgres15).SQL().PullImage()
-	//
-	//vdb, err := dockerdb.New(ctx, config.Build())
-	//if err != nil {
-	//	return nil, fmt.Errorf("failed to connect docker: %w", err)
-	//}
 	db, err := gorm.Open(postgres.Open(cnf.DB), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect database: %w", err)
