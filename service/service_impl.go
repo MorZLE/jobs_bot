@@ -51,6 +51,9 @@ func (s *serviceImpl) Delete(id int64, category string) error {
 func (s *serviceImpl) GetResume(category string, count int, direction string) (model.Student, int, error) {
 	user, err := s.db.GetOneResume(category, direction, count)
 	if err != nil {
+		if errors.Is(err, constants.ErrLastResume) {
+			return user, count, err
+		}
 		if errors.Is(err, constants.ErrDeleteResume) {
 			switch direction {
 			case constants.Next:

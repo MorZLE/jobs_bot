@@ -9,7 +9,7 @@ const (
 )
 
 const StatusDeleted = "deleted"
-
+const StatusPublished = "published"
 const (
 	Next  = "next"
 	Prev  = "prev"

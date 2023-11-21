@@ -12,8 +12,26 @@ import (
 	"log"
 )
 
-var Category = []string{"Разработчик", "ИБ", "Дизайнер", "Системный администратор",
-	"Банковское дело", "Страховой агент", "Мечтатель"}
+var Category = []string{
+	"ИБ",
+	"ДОУ",
+	"Финансы",
+	"Реклама",
+	"Логистика",
+	"Разработчик",
+	"Оператор ИС",
+	"Страховое дело",
+	"Землеустройство",
+	"Банковское дело",
+	"Оператор верстки",
+	"Издательское дело",
+	"Прикладная геодезия",
+	"Графический дизайнер",
+	"Управление качеством",
+	"Экономика и бух учет",
+	"Системное администрирование",
+	"Другое",
+}
 
 func NewRepository(cnf *config.Config) (Storage, error) {
 	//ctx := context.TODO()
@@ -102,7 +120,7 @@ func (r *repository) GetOneResume(category string, direction string, count int) 
 	if len(r.m[category]) == 0 {
 		return model.Student{}, constants.ErrNotResume
 	}
-	if len(r.m[category]) <= count {
+	if len(r.m[category]) < count {
 		return model.Student{}, constants.ErrNotFound
 	}
 	switch direction {
@@ -113,6 +131,9 @@ func (r *repository) GetOneResume(category string, direction string, count int) 
 		if res.Status == constants.StatusDeleted {
 			return model.Student{}, constants.ErrDeleteResume
 		}
+	}
+	if len(r.m[category]) == count+1 {
+		return r.m[category][count], constants.ErrLastResume
 	}
 	return r.m[category][count], nil
 }

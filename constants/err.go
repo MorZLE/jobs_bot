@@ -7,4 +7,5 @@ var (
 	ErrNotCategory  = errors.New("not found")
 	ErrNotResume    = errors.New("not found")
 	ErrDeleteResume = errors.New("not found")
+	ErrLastResume   = errors.New("last resume")
 )
