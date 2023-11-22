@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"github.com/MorZLE/jobs_bot/config"
 	"github.com/MorZLE/jobs_bot/constants"
+	"github.com/MorZLE/jobs_bot/logger"
 	"github.com/MorZLE/jobs_bot/model"
 	"github.com/MorZLE/jobs_bot/repository"
+	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"os"
 )
 
@@ -23,9 +25,16 @@ type serviceImpl struct {
 }
 
 func (s *serviceImpl) SaveResume(user model.Student) error {
+	pdfPath := fmt.Sprintf("%s\\src\\resume\\%s", s.dir, user.Resume)
+	err := api.ValidateFile(pdfPath, nil)
+	if err != nil {
+		logger.Error("Failed to open PDF file:", err)
+		return constants.ErrOpenFile
+	}
 	if err := s.db.Set(user); err != nil {
 		return err
 	}
+
 	return nil
 }
 
