@@ -3,7 +3,6 @@ package main
 import (
 	"github.com/MorZLE/jobs_bot/config"
 	"github.com/MorZLE/jobs_bot/controller"
-	"github.com/MorZLE/jobs_bot/logger"
 	"github.com/MorZLE/jobs_bot/repository"
 	"github.com/MorZLE/jobs_bot/service"
 	"log"
@@ -11,7 +10,7 @@ import (
 
 func main() {
 	cnf := config.NewConfig()
-	logger.Initialize()
+
 	st, err := repository.NewRepository(cnf)
 	defer st.Close()
 	if err != nil {

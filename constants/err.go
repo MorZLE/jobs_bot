@@ -8,5 +8,4 @@ var (
 	ErrNotResume    = errors.New("not found")
 	ErrDeleteResume = errors.New("not found")
 	ErrLastResume   = errors.New("last resume")
-	ErrOpenFile     = errors.New("open file")
 )

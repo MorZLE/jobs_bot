@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/MorZLE/jobs_bot/config"
 	"github.com/MorZLE/jobs_bot/constants"
-	"github.com/MorZLE/jobs_bot/logger"
 	"github.com/MorZLE/jobs_bot/model"
 	"github.com/MorZLE/jobs_bot/repository"
 	"github.com/MorZLE/jobs_bot/service"
@@ -219,7 +218,8 @@ func (h *Handler) ViewRes(c bot.Context) error {
 		Type:    constants.Student,
 	}
 	h.mutex.Unlock()
-	urlPDF := fmt.Sprintf("src\\resume\\%s", user.Resume)
+
+	urlPDF := fmt.Sprintf("src\\resume\\%d%s", user.Tgid, user.Resume)
 	fmt.Println(urlPDF)
 	resume := fmt.Sprintf("ФИО: %s\nГруппа: %s\nКатегория: %s\n", user.Fio, user.Group, user.Category)
 	file := &bot.Photo{
@@ -229,12 +229,6 @@ func (h *Handler) ViewRes(c bot.Context) error {
 
 	_, err = h.bot.Send(c.Chat(), file, profile)
 	if err != nil {
-		logger.Error("ошибка ViewRes", err)
-		profile.Inline(
-			profile.Row(CreateResume),
-		)
-		//h.DeleteProfile(c)
-		//_, err = h.bot.Send(c.Chat(), "Не удается открыть ваше резюме, проверьте файл на целостность и заполните резюме заново", profile)
 		return err
 	}
 	return nil
@@ -325,7 +319,6 @@ func (h *Handler) Text(c bot.Context) error {
 }
 func (h *Handler) Document(c bot.Context) error {
 	doc := c.Message().Document
-
 	id := c.Sender().ID
 	var pdfPath string
 	mUser := h.user[id]
@@ -340,30 +333,22 @@ func (h *Handler) Document(c bot.Context) error {
 		}
 		if strings.HasSuffix(doc.FileName, ".pdf") {
 			if strings.HasSuffix(doc.FileName, ".pdf") {
-
-				mUser.Student.Resume = fmt.Sprintf("%d.pdf", id)
-				pdfPath = fmt.Sprintf("%s\\src\\resume\\%s", h.dir, mUser.Student.Resume)
+				pdfPath = fmt.Sprintf("%s\\src\\resume\\%d.pdf", h.dir, id)
+				mUser := h.user[id]
+				mUser.Student.Resume = ".pdf"
 				mUser.Student.Status = constants.StatusPublished
-
-				err := h.bot.Download(&doc.File, pdfPath)
+				err := h.s.SaveResume(mUser.Student)
 				if err != nil {
-					logger.Error("ошибка Download", err)
+					log.Println(err)
 					h.bot.Send(c.Chat(), "Что то пошло не так")
 					return err
 				}
-
-				err = h.s.SaveResume(mUser.Student)
+				err = h.bot.Download(&doc.File, pdfPath)
 				if err != nil {
-					if errors.Is(err, constants.ErrOpenFile) {
-						h.bot.Send(c.Chat(), "Не удается открыть ваше резюме, проверьте файл на целостность")
-						h.bot.Send(c.Chat(), h.mQuestion[4])
-						return nil
-					}
-					logger.Error("ошибка SaveResume", err)
+					log.Println(err)
 					h.bot.Send(c.Chat(), "Что то пошло не так")
 					return err
 				}
-
 				h.bot.Send(c.Chat(), "Ваше резюме опубликовано")
 				h.ViewRes(c)
 				return nil
@@ -513,24 +498,16 @@ func (h *Handler) ViewResumeStudents(c bot.Context, dir string) error {
 	}
 
 	mUser.EmployeeCount = count
-	urlPDF := fmt.Sprintf("src\\resume\\%s", user.Resume)
+	urlPDF := fmt.Sprintf("src\\resume\\%d%s", user.Tgid, user.Resume)
 	resume := fmt.Sprintf("ФИО: %s\nГруппа: %s\nКатегория: %s\n", user.Fio, user.Group, user.Category)
 	file := &bot.Photo{
 		File:    bot.FromDisk(urlPDF),
 		Caption: resume,
 	}
 	if mUser.EmployeeSetCategory {
-		_, err = h.bot.Send(c.Chat(), file, selector)
-		if err != nil {
-			h.ViewResumeStudents(c, constants.Next)
-			logger.Error("ошибка загрузки файла в резюме", err)
-		}
+		h.bot.Send(c.Chat(), file, selector)
 	} else {
-		_, err = h.bot.Edit(c.Message(), file, selector)
-		if err != nil {
-			h.ViewResumeStudents(c, constants.Next)
-			logger.Error("ошибка загрузки файла в резюме", err)
-		}
+		h.bot.Edit(c.Message(), file, selector)
 	}
 	mUser.EmployeeSetCategory = false
 	h.mutex.Lock()
