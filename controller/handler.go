@@ -233,8 +233,6 @@ func (h *Handler) ViewRes(c bot.Context) error {
 		profile.Inline(
 			profile.Row(CreateResume),
 		)
-		//h.DeleteProfile(c)
-		//_, err = h.bot.Send(c.Chat(), "Не удается открыть ваше резюме, проверьте файл на целостность и заполните резюме заново", profile)
 		return err
 	}
 	return nil
@@ -260,8 +258,11 @@ func (h *Handler) DeleteProfile(c bot.Context) error {
 	mUser.Student.Status = constants.StatusDeleted
 	h.user[c.Sender().ID] = mUser
 	h.mutex.Unlock()
+	menu.Inline(
+		menu.Row(btnMainMenu),
+	)
+	h.bot.Send(c.Chat(), "Профиль удален, надеюсь вы нашли работу!", menu)
 
-	h.bot.Send(c.Chat(), "Профиль удален, надеюсь вы нашли работу!")
 	return nil
 }
 
