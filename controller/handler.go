@@ -100,13 +100,9 @@ var (
 	profile  = &bot.ReplyMarkup{}
 	category = &bot.ReplyMarkup{}
 
-	// Reply buttons.
-
 	btnEmployee = menu.Text("Просмотреть резюме")
 	btnStudent  = menu.Text("Профиль")
 
-	//btnViewResumeStudents = menu.Data("Просмотреть резюме", "viewResume")
-	//btnCategorySelect     = selector.Text("Выбор категории")
 	btnMainMenu = menu.Text("Главное меню")
 
 	CreateResume = menu.Data("Создать резюме", "createResume")
