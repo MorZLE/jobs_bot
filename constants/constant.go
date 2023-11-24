@@ -2,14 +2,15 @@ package constants
 
 const Employee = "employee"
 const Student = "student"
+const Admin = "admin"
 
 const (
-	pdf  = ".pdf"
-	docx = ".docx"
+	StatusDeleted    = "Удалено"
+	StatusPublished  = "Опубликовано"
+	StatusModeration = "В модерации"
+	StatusRejected   = "Отклонено"
+	StatusBanned     = "Забанен"
 )
-
-const StatusDeleted = "deleted"
-const StatusPublished = "published"
 const (
 	Next  = "next"
 	Prev  = "prev"

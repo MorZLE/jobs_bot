@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/MorZLE/jobs_bot/config"
 	"github.com/MorZLE/jobs_bot/constants"
+	"github.com/MorZLE/jobs_bot/internal/repository"
 	"github.com/MorZLE/jobs_bot/logger"
 	"github.com/MorZLE/jobs_bot/model"
-	"github.com/MorZLE/jobs_bot/repository"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"os"
 )
@@ -57,8 +57,8 @@ func (s *serviceImpl) Delete(id int64, category string) error {
 	return nil
 }
 
-func (s *serviceImpl) GetResume(category string, count int, direction string) (model.Student, int, error) {
-	user, err := s.db.GetOneResume(category, direction, count)
+func (s *serviceImpl) GetResume(category string, count int, direction string, wantStatus string) (model.Student, int, error) {
+	user, err := s.db.GetOneResume(category, direction, count, wantStatus)
 	if err != nil {
 		if errors.Is(err, constants.ErrLastResume) {
 			return user, count, err
@@ -67,20 +67,28 @@ func (s *serviceImpl) GetResume(category string, count int, direction string) (m
 			switch direction {
 			case constants.Next:
 				count++
-				user, c, err := s.GetResume(category, count, direction)
-				return user, c, err
+				return s.GetResume(category, count, direction, wantStatus)
 			case constants.Prev:
-				if count > 1 {
+				if count >= 1 {
 					count--
 				} else {
 					return model.Student{}, 0, constants.ErrNotFound
 				}
-				user, c, err := s.GetResume(category, count, direction)
-				return user, c, err
+				return s.GetResume(category, count, direction, wantStatus)
 			}
 			return model.Student{}, 0, err
 		}
 		return model.Student{}, count, err
 	}
 	return user, count, nil
+}
+func (s *serviceImpl) BanUser(idx int, category string) error {
+
+	return s.db.BanUser(idx, category)
+}
+func (s *serviceImpl) PublishUser(idx int, category string) error {
+	return s.db.PublishUser(idx, category)
+}
+func (s *serviceImpl) DeclineUser(idx int, category string) error {
+	return s.db.DeclineUser(idx, category)
 }

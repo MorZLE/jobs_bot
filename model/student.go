@@ -13,18 +13,8 @@ type Student struct {
 	Category string `gorm:"not null"`
 	Status   string `gorm:"not null"`
 }
-type Employee struct {
+type BanUser struct {
 	gorm.Model
-	Id      int    `gorm:"primary_key" gorm:"AUTO_INCREMENT"`
-	Company string `gorm:"not null"`
-	Resume  string `gorm:"not null"`
-}
-
-type Status struct {
-	Id           int    `gorm:"primary_key" gorm:"AUTO_INCREMENT"`
-	Registration string `gorm:"not null"`
-	Moderation   string `gorm:"not null"`
-	Active       string `gorm:"not null"`
-	Disabled     string `gorm:"not null"`
-	Ban          string `gorm:"not null"`
+	Tgid     int64  `gorm:"not null" gorm:"unique"`
+	Username string `gorm:"not null"`
 }

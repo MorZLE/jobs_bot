@@ -2,10 +2,10 @@ package main
 
 import (
 	"github.com/MorZLE/jobs_bot/config"
-	"github.com/MorZLE/jobs_bot/controller"
+	"github.com/MorZLE/jobs_bot/internal/controller"
+	"github.com/MorZLE/jobs_bot/internal/repository"
+	"github.com/MorZLE/jobs_bot/internal/service"
 	"github.com/MorZLE/jobs_bot/logger"
-	"github.com/MorZLE/jobs_bot/repository"
-	"github.com/MorZLE/jobs_bot/service"
 	"log"
 )
 

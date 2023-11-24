@@ -39,7 +39,7 @@ func NewRepository(cnf *config.Config) (Storage, error) {
 		return nil, fmt.Errorf("failed to connect database: %w", err)
 	}
 
-	err = db.Debug().AutoMigrate(&model.Student{}, &model.Employee{})
+	err = db.Debug().AutoMigrate(&model.Student{}, &model.BanUser{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
@@ -104,31 +104,81 @@ func (r *repository) Close() {
 	}
 }
 
-func (r *repository) GetOneResume(category string, direction string, count int) (model.Student, error) {
-	if _, ok := r.m[category]; !ok {
+func (r *repository) GetOneResume(category string, direction string, count int, wantStatus string) (model.Student, error) {
+	valCat, ok := r.m[category]
+	if !ok {
 		return model.Student{}, constants.ErrNotCategory
 	}
-	if len(r.m[category]) == 0 {
+	if len(valCat) == 0 {
 		return model.Student{}, constants.ErrNotResume
 	}
-	if len(r.m[category]) < count {
+	if len(valCat) < count {
 		return model.Student{}, constants.ErrNotFound
 	}
 	switch direction {
 	case constants.Offer:
-		return r.m[category][count], nil
+		return valCat[count], nil
 	default:
-		res := r.m[category][count]
-		if res.Status == constants.StatusDeleted && len(r.m[category]) == count+1 {
+		res := valCat[count]
+		if res.Status == constants.StatusDeleted && len(valCat) == count+1 {
 			return model.Student{}, constants.ErrNotFound
 		}
-		if res.Status == constants.StatusDeleted {
+		if res.Status != wantStatus {
+			if len(valCat) == count+1 {
+				return model.Student{}, constants.ErrNotFound
+			}
 			return model.Student{}, constants.ErrDeleteResume
 		}
+	}
+	if len(valCat) == count+1 {
+		return valCat[count], constants.ErrLastResume
+	}
+	return valCat[count], nil
+}
 
+func (r *repository) BanUser(idx int, category string) error {
+	users := r.m[category]
+	st := users[idx]
+	st.Status = constants.StatusPublished
+	users[idx] = st
+	r.m[category] = users
+
+	err := r.db.Model(&model.Student{}).Where("tgid = ?", st.Tgid).Update("status", constants.StatusPublished).Error
+	if err != nil {
+		return fmt.Errorf("error banUser user: %w", err)
 	}
-	if len(r.m[category]) == count+1 {
-		return r.m[category][count], constants.ErrLastResume
+	banUser := model.BanUser{
+		Tgid:     st.Tgid,
+		Username: st.Username,
 	}
-	return r.m[category][count], nil
+	if err := r.db.Create(&banUser).Error; err != nil {
+		return fmt.Errorf("error banUser user: %w", err)
+	}
+	return nil
+}
+func (r *repository) PublishUser(idx int, category string) error {
+	users := r.m[category]
+	st := users[idx]
+	st.Status = constants.StatusPublished
+	users[idx] = st
+	r.m[category] = users
+
+	err := r.db.Model(&model.Student{}).Where("tgid = ?", st.Tgid).Update("status", constants.StatusPublished).Error
+	if err != nil {
+		return fmt.Errorf("error PublishUser user: %w", err)
+	}
+	return nil
+}
+func (r *repository) DeclineUser(idx int, category string) error {
+	users := r.m[category]
+	st := users[idx]
+	st.Status = constants.StatusPublished
+	users[idx] = st
+	r.m[category] = users
+	err := r.db.Model(&model.Student{}).Where("tgid = ?", st.Tgid).Update("status", constants.StatusRejected).Error
+
+	if err != nil {
+		return fmt.Errorf("error DeclineUser user: %w", err)
+	}
+	return nil
 }
