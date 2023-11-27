@@ -10,6 +10,7 @@ import (
 	"github.com/MorZLE/jobs_bot/logger"
 	"github.com/MorZLE/jobs_bot/model"
 	bot "gopkg.in/telebot.v3"
+	"gopkg.in/telebot.v3/middleware"
 	"log"
 	"strings"
 	"sync"
@@ -37,7 +38,7 @@ func NewHandler(s service.Service, cnf *config.Config) (*Handler, error) {
 		bot:       b,
 		dir:       cnf.Dir,
 		mQuestion: mQestion,
-		admin:     cnf.Admin,
+		admins:    []int64{cnf.Admin},
 		user:      make(map[int64]model.User),
 	}, nil
 }
@@ -49,7 +50,7 @@ type Handler struct {
 	user      map[int64]model.User // модель пользователя
 	mQuestion map[int]string
 	mutex     sync.RWMutex
-	admin     int64
+	admins    []int64
 }
 
 func (h *Handler) Start() {
@@ -73,12 +74,6 @@ func (h *Handler) Start() {
 	h.bot.Handle(&ReviewResume, h.ReviewResume)
 	h.bot.Handle(&DeleteProfile, h.DeleteProfile)
 
-	h.bot.Handle(&adminMenu, h.AdminMenu)
-	h.bot.Handle(&btnViewResumeAdmin, h.btnViewResumeAdmin)
-	h.bot.Handle(&btnBanUser, h.btnBanUser)
-	h.bot.Handle(&btnDeclineUser, h.btnDeclineUser)
-	h.bot.Handle(&btnPublishUser, h.btnPublishUser)
-
 	h.bot.Handle(&btnC1, h.btnC1)
 	h.bot.Handle(&btnC2, h.btnC1)
 	h.bot.Handle(&btnC3, h.btnC1)
@@ -97,9 +92,24 @@ func (h *Handler) Start() {
 	h.bot.Handle(&btnC16, h.btnC1)
 	h.bot.Handle(&btnC17, h.btnC1)
 	h.bot.Handle(&btnC18, h.btnC1)
+	h.bot.Use(checkBan)
+	h.bot.Use(middleware.Logger())
+	h.bot.Use(middleware.Recover())
+	h.AdminHandler()
 
 	h.bot.Start()
 	log.Println("Bot started")
+}
+func checkBan(next bot.HandlerFunc) bot.HandlerFunc {
+	return func(c bot.Context) error {
+		id := c.Sender().ID
+		for _, v := range repository.Blacklist {
+			if id == v {
+				return c.Send(c.Chat(), "Вы забанены")
+			}
+		}
+		return next(c) // continue execution chain
+	}
 }
 
 var (
@@ -155,16 +165,20 @@ func (h *Handler) HandlerStart(c bot.Context) error {
 		menu.Row(btnStudent),
 	)
 	m := model.User{}
-	if id == h.admin {
-		menu.Reply(
-			menu.Row(btnStudent),
-			menu.Row(btnEmployee),
-			menu.Row(adminMenu),
-		)
-		m = model.User{
-			Type: constants.Admin,
+	for _, v := range h.admins {
+		if id == v {
+			menu.Reply(
+				menu.Row(btnStudent),
+				menu.Row(btnEmployee),
+				menu.Row(adminMenu),
+			)
+			m = model.User{
+				Type: constants.Admin,
+			}
+			break
 		}
-	} else {
+	}
+	if m.Type != constants.Admin {
 		user, err := h.s.Get(id)
 		if err == nil {
 			m = model.User{

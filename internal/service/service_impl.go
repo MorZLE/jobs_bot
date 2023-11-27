@@ -10,6 +10,7 @@ import (
 	"github.com/MorZLE/jobs_bot/model"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"os"
+	"strconv"
 )
 
 func NewService(cnf *config.Config, db repository.Storage) Service {
@@ -91,4 +92,41 @@ func (s *serviceImpl) PublishUser(idx int, category string) error {
 }
 func (s *serviceImpl) DeclineUser(idx int, category string) error {
 	return s.db.DeclineUser(idx, category)
+}
+
+func (s *serviceImpl) Statistics() (string, error) {
+	m, _ := s.db.Statistics()
+	res := "Статистика:\n"
+	for k, v := range m {
+		res += fmt.Sprintf("%s: %d\n", k, len(v))
+	}
+	return res, nil
+}
+
+func (s *serviceImpl) UnbanUser(user, flag string) error {
+	switch flag {
+	case constants.Username:
+		return s.db.UnbanUsername(user)
+	case constants.TgID:
+		tgid, err := strconv.ParseInt(user, 10, 64)
+		if err != nil {
+			return err
+		}
+		return s.db.UnbanTgID(tgid)
+	}
+	return nil
+}
+
+func (s *serviceImpl) ViewBanList() (string, error) {
+	res := "Список забаненых пользователей:\n"
+
+	userban, err := s.db.ViewBanList()
+	if err != nil {
+		return "", err
+	}
+	for _, v := range userban {
+
+		res += fmt.Sprintf("%s: %d\n", v.Username, int(v.Tgid))
+	}
+	return res, nil
 }

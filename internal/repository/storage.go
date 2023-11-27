@@ -12,4 +12,8 @@ type Storage interface {
 	BanUser(idx int, category string) error
 	PublishUser(idx int, category string) error
 	DeclineUser(idx int, category string) error
+	Statistics() (map[string][]model.Student, error)
+	UnbanUsername(username string) error
+	UnbanTgID(tgid int64) error
+	ViewBanList() ([]model.BanUser, error)
 }

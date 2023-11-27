@@ -33,6 +33,8 @@ var Category = []string{
 	"Другое",
 }
 
+var Blacklist []int64
+
 func NewRepository(cnf *config.Config) (Storage, error) {
 	db, err := gorm.Open(postgres.Open(cnf.DB), &gorm.Config{})
 	if err != nil {
@@ -55,14 +57,21 @@ func NewRepository(cnf *config.Config) (Storage, error) {
 		}
 		mCategory[c] = students
 	}
-
+	var bans []model.BanUser
+	err = db.Find(&bans).Error
+	if err != nil {
+		return nil, fmt.Errorf("error get banuser: %w", err)
+	}
+	for _, ban := range bans {
+		Blacklist = append(Blacklist, ban.Tgid)
+	}
 	return &repository{db: db, m: mCategory, mIdxResume: make(map[int64]int)}, nil
 }
 
 type repository struct {
 	db         *gorm.DB
-	m          map[string][]model.Student
-	mIdxResume map[int64]int
+	m          map[string][]model.Student //Массив студентов по категориям
+	mIdxResume map[int64]int              //Индекс студента в массиве
 }
 
 func (r *repository) Set(student model.Student) error {
@@ -71,7 +80,6 @@ func (r *repository) Set(student model.Student) error {
 	}
 	r.mIdxResume[student.Tgid] = len(r.m[student.Category])
 	r.m[student.Category] = append(r.m[student.Category], student)
-
 	return nil
 }
 
@@ -143,7 +151,7 @@ func (r *repository) BanUser(idx int, category string) error {
 	users[idx] = st
 	r.m[category] = users
 
-	err := r.db.Model(&model.Student{}).Where("tgid = ?", st.Tgid).Update("status", constants.StatusPublished).Error
+	err := r.db.Model(&model.Student{}).Where("tgid = ?", st.Tgid).Update("status", constants.StatusBanned).Error
 	if err != nil {
 		return fmt.Errorf("error banUser user: %w", err)
 	}
@@ -154,6 +162,7 @@ func (r *repository) BanUser(idx int, category string) error {
 	if err := r.db.Create(&banUser).Error; err != nil {
 		return fmt.Errorf("error banUser user: %w", err)
 	}
+	Blacklist = append(Blacklist, banUser.Tgid)
 	return nil
 }
 func (r *repository) PublishUser(idx int, category string) error {
@@ -181,4 +190,52 @@ func (r *repository) DeclineUser(idx int, category string) error {
 		return fmt.Errorf("error DeclineUser user: %w", err)
 	}
 	return nil
+}
+
+func (r *repository) Statistics() (map[string][]model.Student, error) {
+	return r.m, nil
+}
+
+func (r *repository) UnbanUsername(username string) error {
+	var banUser model.BanUser
+	err := r.db.Where("username = ?", username).Find(&banUser).Error
+	if err != nil {
+		return err
+	}
+	tgid := banUser.Tgid
+	if tgid == 0 {
+		return constants.ErrNotFound
+	}
+	err = r.db.Where("username = ?", username).Delete(&model.BanUser{}).Error
+	if err != nil {
+		return err
+	}
+	deleteBanUser(tgid)
+	return nil
+}
+func (r *repository) UnbanTgID(tgid int64) error {
+	err := r.db.Where("tgid = ?", tgid).Delete(&model.BanUser{}).Error
+	if err != nil {
+		return err
+	}
+	deleteBanUser(tgid)
+	return nil
+}
+
+func (r *repository) ViewBanList() ([]model.BanUser, error) {
+	var banUsers []model.BanUser
+	err := r.db.Find(&banUsers).Error
+	if err != nil {
+		return nil, err
+	}
+	return banUsers, nil
+}
+
+func deleteBanUser(tgid int64) {
+	for r := range Blacklist {
+		if Blacklist[r] == tgid {
+			Blacklist = append(Blacklist[:r], Blacklist[r+1:]...)
+		}
+	}
+	return
 }

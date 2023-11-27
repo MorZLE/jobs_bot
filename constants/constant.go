@@ -1,9 +1,10 @@
 package constants
 
-const Employee = "employee"
-const Student = "student"
-const Admin = "admin"
-
+const (
+	Employee = "employee"
+	Student  = "student"
+	Admin    = "admin"
+)
 const (
 	StatusDeleted    = "Удалено"
 	StatusPublished  = "Опубликовано"
@@ -15,4 +16,9 @@ const (
 	Next  = "next"
 	Prev  = "prev"
 	Offer = "offer"
+)
+
+const (
+	Username = "name"
+	TgID     = "tgid"
 )

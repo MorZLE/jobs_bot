@@ -13,4 +13,7 @@ type Service interface {
 	BanUser(idx int, category string) error
 	PublishUser(idx int, category string) error
 	DeclineUser(idx int, category string) error
+	Statistics() (string, error)
+	UnbanUser(user, flag string) error
+	ViewBanList() (string, error)
 }
