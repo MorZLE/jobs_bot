@@ -9,8 +9,10 @@ import (
 	"github.com/MorZLE/jobs_bot/logger"
 	"github.com/MorZLE/jobs_bot/model"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/speps/go-hashids"
 	"os"
 	"strconv"
+	"time"
 )
 
 func NewService(cnf *config.Config, db repository.Storage) Service {
@@ -84,7 +86,10 @@ func (s *serviceImpl) GetResume(category string, count int, direction string, wa
 	return user, count, nil
 }
 func (s *serviceImpl) BanUser(idx int, category string) error {
-
+	err := s.Delete(int64(idx), category)
+	if err != nil {
+		return err
+	}
 	return s.db.BanUser(idx, category)
 }
 func (s *serviceImpl) PublishUser(idx int, category string) error {
@@ -119,7 +124,6 @@ func (s *serviceImpl) UnbanUser(user, flag string) error {
 
 func (s *serviceImpl) ViewBanList() (string, error) {
 	res := "Список забаненых пользователей:\n"
-
 	userban, err := s.db.ViewBanList()
 	if err != nil {
 		return "", err
@@ -129,4 +133,44 @@ func (s *serviceImpl) ViewBanList() (string, error) {
 		res += fmt.Sprintf("%s: %d\n", v.Username, int(v.Tgid))
 	}
 	return res, nil
+}
+
+func (s *serviceImpl) NewAdmin(username string) (string, error) {
+	hd := hashids.NewData()
+	hd.MinLength = 6
+	h, err := hashids.NewWithData(hd)
+	if err != nil {
+		logger.Error("Error NewWithData:", err)
+		return "", err
+	}
+	url, err := h.Encode([]int{time.Now().Nanosecond()})
+	if err != nil {
+		logger.Error("Error Encode:", err)
+		return "", err
+	}
+	err = s.db.NewAdminURL(username, url)
+	return url, nil
+}
+
+func (s *serviceImpl) AuthNewAdmin(id int64, username, url string) error {
+	if err := s.db.CheckUrlAdmin(username, url); err != nil {
+		return err
+	}
+	if err := s.db.CreateAdmin(username, id); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *serviceImpl) GetAdmins() []int64 {
+	var admins []int64
+	res, err := s.db.GetAdmins()
+	if err != nil {
+		logger.Error("Error GetAdmins:", err)
+		return nil
+	}
+	for _, v := range res {
+		admins = append(admins, v.Tgid)
+	}
+	return admins
 }

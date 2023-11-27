@@ -22,3 +22,8 @@ const (
 	Username = "name"
 	TgID     = "tgid"
 )
+
+const (
+	Senior = 1
+	Junior = 2
+)

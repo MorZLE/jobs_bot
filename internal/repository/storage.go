@@ -16,4 +16,8 @@ type Storage interface {
 	UnbanUsername(username string) error
 	UnbanTgID(tgid int64) error
 	ViewBanList() ([]model.BanUser, error)
+	NewAdminURL(username, url string) error
+	CheckUrlAdmin(username, url string) error
+	CreateAdmin(username string, id int64) error
+	GetAdmins() ([]model.Admin, error)
 }

@@ -41,7 +41,7 @@ func NewRepository(cnf *config.Config) (Storage, error) {
 		return nil, fmt.Errorf("failed to connect database: %w", err)
 	}
 
-	err = db.Debug().AutoMigrate(&model.Student{}, &model.BanUser{})
+	err = db.Debug().AutoMigrate(&model.Student{}, &model.BanUser{}, &model.AdminInvait{}, &model.Admin{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
@@ -238,4 +238,39 @@ func deleteBanUser(tgid int64) {
 		}
 	}
 	return
+}
+
+func (r *repository) NewAdminURL(username, url string) error {
+	adminURL := model.AdminInvait{
+		Username: username,
+		Url:      url,
+	}
+	return r.db.Create(&adminURL).Error
+}
+
+func (r *repository) CheckUrlAdmin(username, url string) error {
+	var adminURL model.AdminInvait
+	err := r.db.Where("username = ?", username).Where("url = ?", url).Find(&adminURL).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *repository) CreateAdmin(username string, id int64) error {
+	admin := model.Admin{
+		Username: username,
+		Tgid:     id,
+		Lvl:      constants.Junior,
+	}
+	return r.db.Create(&admin).Error
+}
+
+func (r *repository) GetAdmins() ([]model.Admin, error) {
+	var admins []model.Admin
+	err := r.db.Find(&admins).Error
+	if err != nil {
+		return nil, err
+	}
+	return admins, nil
 }

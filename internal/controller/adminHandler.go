@@ -35,6 +35,23 @@ func (h *Handler) AdminHandler() {
 
 	adminOnly.Handle("/unbanu", h.unbanUsername) //команда разбана по username
 	adminOnly.Handle("/unbanid", h.unbanID)      //команда разбана по TGID
+	adminOnly.Handle("/newadmin", h.newadmin)    //команда создания админа
+}
+
+func (h *Handler) AuthNewAdmin(c bot.Context) error {
+	url := c.Args()[0]
+	id := c.Sender().ID
+	username := c.Sender().Username
+	err := h.s.AuthNewAdmin(id, username, url)
+	if err != nil {
+		logger.Error("ошибка AuthNewAdmin", err)
+		return err
+	}
+	h.admins = append(h.admins, id)
+	h.bot.Send(c.Chat(), "Вы авторизованы как администратор")
+	h.CheckAdmin(c)
+	h.HandlerStart(c)
+	return nil
 }
 
 func (h *Handler) CheckAdmin(c bot.Context) error {
@@ -240,5 +257,16 @@ func (h *Handler) btnViewBanList(c bot.Context) error {
 		logger.Error("ошибка при отправке btnViewBanList", err)
 	}
 	return nil
+}
 
+func (h *Handler) newadmin(c bot.Context) error {
+	username := c.Args()[0]
+	url, err := h.s.NewAdmin(username)
+	if err != nil {
+		logger.Error("ошибка NewAdmin", err)
+		h.bot.Send(c.Chat(), "Что то пошло не так")
+	}
+	res := fmt.Sprintf("Новый администратор должен ввести для авторизации\n /auth %s", url)
+	h.bot.Send(c.Chat(), res)
+	return nil
 }

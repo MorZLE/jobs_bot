@@ -16,4 +16,7 @@ type Service interface {
 	Statistics() (string, error)
 	UnbanUser(user, flag string) error
 	ViewBanList() (string, error)
+	NewAdmin(username string) (string, error)
+	AuthNewAdmin(id int64, username, url string) error
+	GetAdmins() []int64
 }

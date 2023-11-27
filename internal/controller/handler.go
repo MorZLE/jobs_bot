@@ -33,12 +33,14 @@ func NewHandler(s service.Service, cnf *config.Config) (*Handler, error) {
 		3: "Сфера деятельности",
 		4: "Прикрепите резюме в формате .pdf одной страницей",
 	}
+	admins := s.GetAdmins()
+	admins = append(admins, cnf.Admin)
 	return &Handler{
 		s:         s,
 		bot:       b,
 		dir:       cnf.Dir,
 		mQuestion: mQestion,
-		admins:    []int64{cnf.Admin},
+		admins:    admins,
 		user:      make(map[int64]model.User),
 	}, nil
 }
@@ -54,6 +56,7 @@ type Handler struct {
 }
 
 func (h *Handler) Start() {
+	h.bot.Use(middleware.Logger(), checkBan, middleware.Recover())
 	h.bot.Handle("/start", h.HandlerStart)
 	h.bot.Handle(&btnMainMenu, h.HandlerStart)
 	h.bot.Handle(&btnEmployee, h.Employee)
@@ -92,9 +95,8 @@ func (h *Handler) Start() {
 	h.bot.Handle(&btnC16, h.btnC1)
 	h.bot.Handle(&btnC17, h.btnC1)
 	h.bot.Handle(&btnC18, h.btnC1)
-	h.bot.Use(checkBan)
-	h.bot.Use(middleware.Logger())
-	h.bot.Use(middleware.Recover())
+	h.bot.Handle("/auth", h.AuthNewAdmin)
+
 	h.AdminHandler()
 
 	h.bot.Start()
@@ -105,7 +107,7 @@ func checkBan(next bot.HandlerFunc) bot.HandlerFunc {
 		id := c.Sender().ID
 		for _, v := range repository.Blacklist {
 			if id == v {
-				return c.Send(c.Chat(), "Вы забанены")
+				return c.Send("Вы заблокированы")
 			}
 		}
 		return next(c) // continue execution chain
