@@ -6,6 +6,7 @@ require (
 	github.com/jinzhu/gorm v1.9.16
 	github.com/lib/pq v1.10.9
 	github.com/pdfcpu/pdfcpu v0.5.0
+	github.com/speps/go-hashids v2.0.0+incompatible
 	go.uber.org/zap v1.17.0
 	gopkg.in/telebot.v3 v3.1.4
 	gorm.io/driver/postgres v1.5.4

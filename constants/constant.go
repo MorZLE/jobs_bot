@@ -1,17 +1,29 @@
 package constants
 
-const Employee = "employee"
-const Student = "student"
-
 const (
-	pdf  = ".pdf"
-	docx = ".docx"
+	Employee = "employee"
+	Student  = "student"
+	Admin    = "admin"
 )
-
-const StatusDeleted = "deleted"
-const StatusPublished = "published"
+const (
+	StatusDeleted    = "Удалено"
+	StatusPublished  = "Опубликовано"
+	StatusModeration = "В модерации"
+	StatusRejected   = "Отклонено"
+	StatusBanned     = "Забанен"
+)
 const (
 	Next  = "next"
 	Prev  = "prev"
 	Offer = "offer"
+)
+
+const (
+	Username = "name"
+	TgID     = "tgid"
+)
+
+const (
+	Senior = 1
+	Junior = 2
 )

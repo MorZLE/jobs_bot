@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"github.com/MorZLE/jobs_bot/config"
 	"github.com/MorZLE/jobs_bot/constants"
+	"github.com/MorZLE/jobs_bot/internal/repository"
+	"github.com/MorZLE/jobs_bot/internal/service"
 	"github.com/MorZLE/jobs_bot/logger"
 	"github.com/MorZLE/jobs_bot/model"
-	"github.com/MorZLE/jobs_bot/repository"
-	"github.com/MorZLE/jobs_bot/service"
 	bot "gopkg.in/telebot.v3"
+	"gopkg.in/telebot.v3/middleware"
 	"log"
 	"strings"
 	"sync"
@@ -18,40 +19,43 @@ import (
 
 func NewHandler(s service.Service, cnf *config.Config) (*Handler, error) {
 	pref := bot.Settings{
-		Token:  cnf.BotToken,
+		Token: cnf.BotToken,
+
 		Poller: &bot.LongPoller{Timeout: 10 * time.Second},
 	}
-
 	b, err := bot.NewBot(pref)
 	if err != nil {
 		return nil, err
 	}
 	mQestion := map[int]string{
-
 		1: "Ваше ФИО",
 		2: "Ваша группа",
 		3: "Сфера деятельности",
 		4: "Прикрепите резюме в формате .pdf одной страницей",
 	}
+
 	return &Handler{
-		s:         s,
-		bot:       b,
-		dir:       cnf.Dir,
-		mQuestion: mQestion,
-		user:      make(map[int64]model.User),
+		s:          s,
+		bot:        b,
+		dir:        cnf.Dir,
+		mQuestion:  mQestion,
+		superadmin: cnf.Admin,
+		user:       make(map[int64]model.User),
 	}, nil
 }
 
 type Handler struct {
-	s         service.Service
-	bot       *bot.Bot
-	dir       string
-	user      map[int64]model.User // модель пользователя
-	mQuestion map[int]string
-	mutex     sync.RWMutex
+	s          service.Service
+	bot        *bot.Bot
+	dir        string
+	user       map[int64]model.User // модель пользователя
+	mQuestion  map[int]string
+	mutex      sync.RWMutex
+	superadmin int64
 }
 
 func (h *Handler) Start() {
+	h.bot.Use(middleware.Logger(), checkBan, middleware.Recover())
 	h.bot.Handle("/start", h.HandlerStart)
 	h.bot.Handle(&btnMainMenu, h.HandlerStart)
 	h.bot.Handle(&btnEmployee, h.Employee)
@@ -68,6 +72,7 @@ func (h *Handler) Start() {
 	h.bot.Handle(&btnNext, h.Next)
 	h.bot.Handle(&btnPrev, h.Prev)
 	h.bot.Handle(&btnOffer, h.Offer)
+
 	h.bot.Handle(&ReviewResume, h.ReviewResume)
 	h.bot.Handle(&DeleteProfile, h.DeleteProfile)
 
@@ -89,9 +94,23 @@ func (h *Handler) Start() {
 	h.bot.Handle(&btnC16, h.btnC1)
 	h.bot.Handle(&btnC17, h.btnC1)
 	h.bot.Handle(&btnC18, h.btnC1)
+	h.bot.Handle("/auth", h.AuthNewAdmin)
+
+	h.AdminHandler()
 
 	h.bot.Start()
 	log.Println("Bot started")
+}
+func checkBan(next bot.HandlerFunc) bot.HandlerFunc {
+	return func(c bot.Context) error {
+		id := c.Sender().ID
+		for _, v := range repository.Blacklist {
+			if id == v {
+				return c.Send("Вы заблокированы")
+			}
+		}
+		return next(c) // continue execution chain
+	}
 }
 
 var (
@@ -103,8 +122,8 @@ var (
 	btnEmployee = menu.Text("Просмотреть резюме")
 	btnStudent  = menu.Text("Профиль")
 
-	btnMainMenu = menu.Text("Главное меню")
-
+	btnMainMenu  = menu.Text("Главное меню")
+	adminMenu    = menu.Text("Управление ботом")
 	CreateResume = menu.Data("Создать резюме", "createResume")
 
 	ViewResume    = menu.Text("Профиль")
@@ -141,24 +160,41 @@ var (
 )
 
 func (h *Handler) HandlerStart(c bot.Context) error {
+	id := c.Sender().ID
 	menu.Reply(
 		menu.Row(btnEmployee),
 		menu.Row(btnStudent),
 	)
 	m := model.User{}
-	user, err := h.s.Get(c.Sender().ID)
-	if err == nil {
-		m = model.User{
-			Student: user,
+	for _, v := range repository.Admins {
+		if id == v {
+			menu.Reply(
+				menu.Row(btnStudent),
+				menu.Row(btnEmployee),
+				menu.Row(adminMenu),
+			)
+			m = model.User{
+				Type: constants.Admin,
+			}
+			break
 		}
-	} else {
-		m = model.User{
-			Student: model.Student{},
+	}
+	if m.Type != constants.Admin {
+		user, err := h.s.Get(id)
+		if err == nil {
+			m = model.User{
+				Student: user,
+			}
+		} else {
+			m = model.User{
+				Student: model.Student{},
+			}
 		}
 	}
 	h.mutex.Lock()
-	h.user[c.Sender().ID] = m
+	h.user[id] = m
 	h.mutex.Unlock()
+
 	return c.Send("Привет! Я бот, который поможет тебе найти работу!", menu)
 }
 
@@ -217,7 +253,7 @@ func (h *Handler) ViewRes(c bot.Context) error {
 	h.mutex.Unlock()
 	urlPDF := fmt.Sprintf("src\\resume\\%s", user.Resume)
 	fmt.Println(urlPDF)
-	resume := fmt.Sprintf("ФИО: %s\nГруппа: %s\nКатегория: %s\n", user.Fio, user.Group, user.Category)
+	resume := fmt.Sprintf("ФИО: %s\nГруппа: %s\nКатегория: %s\nСтатус: %s", user.Fio, user.Group, user.Category, user.Status)
 	file := &bot.Photo{
 		File:    bot.FromDisk(urlPDF),
 		Caption: resume,
@@ -340,7 +376,7 @@ func (h *Handler) Document(c bot.Context) error {
 
 				mUser.Student.Resume = fmt.Sprintf("%d.pdf", id)
 				pdfPath = fmt.Sprintf("%s\\src\\resume\\%s", h.dir, mUser.Student.Resume)
-				mUser.Student.Status = constants.StatusPublished
+				mUser.Student.Status = constants.StatusModeration
 
 				err := h.bot.Download(&doc.File, pdfPath)
 				if err != nil {
@@ -402,7 +438,7 @@ func (h *Handler) btnC1(c bot.Context) error {
 	mUser := h.user[id]
 	switch mUser.Type {
 	case constants.Student:
-		if mUser.Student.Status == constants.StatusPublished {
+		if mUser.Student.Status == constants.StatusPublished || mUser.Student.Status == constants.StatusModeration {
 			return nil
 		}
 		if mUser.Nqest != 3 {
@@ -423,6 +459,15 @@ func (h *Handler) btnC1(c bot.Context) error {
 		h.user[id] = mUser
 		h.mutex.Unlock()
 		h.ViewResumeStudents(c, constants.Next)
+		return nil
+	case constants.Admin:
+		mUser.EmployeeCategory = data
+		mUser.EmployeeCount = 0
+		mUser.EmployeeSetCategory = true
+		h.mutex.Lock()
+		h.user[id] = mUser
+		h.mutex.Unlock()
+		h.ModerationAdmin(c, constants.Next)
 	}
 	return nil
 }
@@ -470,7 +515,7 @@ func (h *Handler) ViewResumeStudents(c bot.Context, dir string) error {
 
 	mUser := h.user[id]
 
-	user, count, err := h.s.GetResume(mUser.EmployeeCategory, mUser.EmployeeCount, dir)
+	user, count, err := h.s.GetResume(mUser.EmployeeCategory, mUser.EmployeeCount, dir, constants.StatusPublished)
 	if count > 0 {
 		selector.Inline(
 			selector.Row(btnPrev, btnOffer, btnNext),
@@ -544,7 +589,12 @@ func (h *Handler) Next(c bot.Context) error {
 	h.mutex.Lock()
 	h.user[id] = mUser
 	h.mutex.Unlock()
-	h.ViewResumeStudents(c, constants.Next)
+	switch mUser.Type {
+	case constants.Admin:
+		h.ModerationAdmin(c, constants.Next)
+	case constants.Employee:
+		h.ViewResumeStudents(c, constants.Next)
+	}
 	return nil
 }
 func (h *Handler) Prev(c bot.Context) error {
@@ -556,13 +606,19 @@ func (h *Handler) Prev(c bot.Context) error {
 	h.mutex.Lock()
 	h.user[id] = mUser
 	h.mutex.Unlock()
-	h.ViewResumeStudents(c, constants.Prev)
+	switch mUser.Type {
+	case constants.Admin:
+		h.ModerationAdmin(c, constants.Prev)
+	case constants.Employee:
+		h.ViewResumeStudents(c, constants.Prev)
+	}
+
 	return nil
 }
 func (h *Handler) Offer(c bot.Context) error {
 	id := c.Sender().ID
 	mUser := h.user[id]
-	user, _, err := h.s.GetResume(mUser.EmployeeCategory, mUser.EmployeeCount, constants.Offer)
+	user, _, err := h.s.GetResume(mUser.EmployeeCategory, mUser.EmployeeCount, constants.Offer, constants.StatusPublished)
 	if err != nil {
 		if errors.Is(err, constants.ErrNotCategory) {
 			h.bot.Send(c.Chat(), "Категория не найдена")
