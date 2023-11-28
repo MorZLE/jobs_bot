@@ -159,18 +159,24 @@ func (s *serviceImpl) AuthNewAdmin(id int64, username, url string) error {
 	if err := s.db.CreateAdmin(username, id); err != nil {
 		return err
 	}
+	if err := s.db.DeleteUrlInvaite(username, url); err != nil {
+		return err
+	}
 	return nil
 }
 
-func (s *serviceImpl) GetAdmins() []int64 {
-	var admins []int64
+func (s *serviceImpl) GetAdmins() (string, error) {
 	res, err := s.db.GetAdmins()
 	if err != nil {
-		logger.Error("Error GetAdmins:", err)
-		return nil
+		return "", err
 	}
+	adm := "Список администраторов:\n"
 	for _, v := range res {
-		admins = append(admins, v.Tgid)
+		adm += fmt.Sprintf("@%s\n", v.Username)
 	}
-	return admins
+	return adm, nil
+}
+
+func (s *serviceImpl) DeleteAdmin(username string) error {
+	return s.db.DeleteAdmin(username)
 }

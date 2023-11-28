@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/MorZLE/jobs_bot/constants"
+	"github.com/MorZLE/jobs_bot/internal/repository"
 	"github.com/MorZLE/jobs_bot/logger"
 	bot "gopkg.in/telebot.v3"
-	"gopkg.in/telebot.v3/middleware"
 	"log"
 )
 
@@ -19,11 +19,12 @@ var (
 	btnViewBanList     = selector.Data("Список забаненных", "viewBanList")
 	btnDeclineUser     = selector.Data("Отклонить резюме", "declineUser")
 	btnPublishUser     = selector.Data("Опубликовать резюме", "publishUser")
+	btnViewAllAdmin    = selector.Data("Список администраторов", "viewAllAdmin")
 )
 
 func (h *Handler) AdminHandler() {
 	adminOnly := h.bot.Group()
-	adminOnly.Use(middleware.Whitelist(h.admins...))
+	adminOnly.Use(checkBanMiddleware)
 	adminOnly.Handle(&adminMenu, h.AdminMenu)
 	adminOnly.Handle(&btnViewResumeAdmin, h.btnViewResumeAdmin)
 	adminOnly.Handle(&btnBanUser, h.btnBanUser)
@@ -32,10 +33,25 @@ func (h *Handler) AdminHandler() {
 	adminOnly.Handle(&btnAdminCommand, h.btnAdminCommand)
 	adminOnly.Handle(&btnStatistics, h.btnStatistics)
 	adminOnly.Handle(&btnViewBanList, h.btnViewBanList)
+	adminOnly.Handle(&btnViewAllAdmin, h.btnViewAllAdmin)
 
 	adminOnly.Handle("/unbanu", h.unbanUsername) //команда разбана по username
 	adminOnly.Handle("/unbanid", h.unbanID)      //команда разбана по TGID
-	adminOnly.Handle("/newadmin", h.newadmin)    //команда создания админа
+
+	adminOnly.Handle("/newadmin", h.newadmin) //команда создания админа
+	adminOnly.Handle("/deladmin", h.deladmin)
+}
+
+func checkBanMiddleware(next bot.HandlerFunc) bot.HandlerFunc {
+	return func(c bot.Context) error {
+		id := c.Sender().ID
+		for _, v := range repository.Admins {
+			if id == v {
+				return next(c)
+			}
+		}
+		return nil
+	}
 }
 
 func (h *Handler) AuthNewAdmin(c bot.Context) error {
@@ -47,7 +63,6 @@ func (h *Handler) AuthNewAdmin(c bot.Context) error {
 		logger.Error("ошибка AuthNewAdmin", err)
 		return err
 	}
-	h.admins = append(h.admins, id)
 	h.bot.Send(c.Chat(), "Вы авторизованы как администратор")
 	h.CheckAdmin(c)
 	h.HandlerStart(c)
@@ -70,11 +85,13 @@ func (h *Handler) AdminMenu(c bot.Context) error {
 		menuAdmin.Row(btnAdminCommand),
 		menuAdmin.Row(btnStatistics),
 		menuAdmin.Row(btnViewBanList),
+		menuAdmin.Row(btnViewAllAdmin),
 	)
 	_, err := h.bot.Send(c.Chat(), "Админ меню", menuAdmin)
 	if err != nil {
 		logger.Error("ошибка AdminMenu", err)
 	}
+
 	return nil
 }
 
@@ -199,9 +216,10 @@ func (h *Handler) btnBanUser(c bot.Context) error {
 	return nil
 }
 func (h *Handler) btnAdminCommand(c bot.Context) error {
-	res := "Команды администратора:\n"
-	res += "/unbanu имя\n"
-	res += "/unbanid TgID\n"
+	res := "Команды администратора:\n/unbanu имя\n/unbanid TgID\n"
+	if c.Sender().ID == h.superadmin {
+		res += "/newadmin username\n/deladmin username\n"
+	}
 	h.bot.Send(c.Chat(), res)
 	return nil
 }
@@ -212,11 +230,8 @@ func (h *Handler) btnStatistics(c bot.Context) error {
 		h.bot.Send(c.Chat(), "Что то пошло не так")
 		logger.Error("ошибка при получении статистики", err)
 	}
-	_, err = h.bot.Send(c.Chat(), statistic)
-	if err != nil {
-		h.bot.Send(c.Chat(), "Что то пошло не так")
-		logger.Error("ошибка при отправке статистики", err)
-	}
+	h.bot.Send(c.Chat(), statistic)
+
 	return nil
 }
 func (h *Handler) unbanID(c bot.Context) error {
@@ -246,20 +261,21 @@ func (h *Handler) unbanUsername(c bot.Context) error {
 }
 
 func (h *Handler) btnViewBanList(c bot.Context) error {
-	statistic, err := h.s.ViewBanList()
+	banlist, err := h.s.ViewBanList()
 	if err != nil {
 		h.bot.Send(c.Chat(), "Что то пошло не так")
 		logger.Error("ошибка при получении btnViewBanList", err)
 	}
-	_, err = h.bot.Send(c.Chat(), statistic)
-	if err != nil {
-		h.bot.Send(c.Chat(), "Что то пошло не так")
-		logger.Error("ошибка при отправке btnViewBanList", err)
-	}
+	h.bot.Send(c.Chat(), banlist)
 	return nil
 }
 
 func (h *Handler) newadmin(c bot.Context) error {
+	adminid := c.Sender().ID
+	if adminid != h.superadmin {
+		h.bot.Send(c.Chat(), "Недостаточно прав")
+		return nil
+	}
 	username := c.Args()[0]
 	url, err := h.s.NewAdmin(username)
 	if err != nil {
@@ -268,5 +284,34 @@ func (h *Handler) newadmin(c bot.Context) error {
 	}
 	res := fmt.Sprintf("Новый администратор должен ввести для авторизации\n /auth %s", url)
 	h.bot.Send(c.Chat(), res)
+	return nil
+}
+
+func (h *Handler) deladmin(c bot.Context) error {
+	if c.Sender().ID != h.superadmin {
+		h.bot.Send(c.Chat(), "Недостаточно прав")
+		return nil
+	}
+	usernameAdmin := c.Args()[0]
+	err := h.s.DeleteAdmin(usernameAdmin)
+	if err != nil {
+		if errors.Is(err, constants.ErrNotFound) {
+			h.bot.Send(c.Chat(), "Администратор не найден")
+			return nil
+		}
+		logger.Error("ошибка DeleteAdmin", err)
+		h.bot.Send(c.Chat(), "Что то пошло не так")
+	}
+	h.bot.Send(c.Chat(), "Администратор удален")
+	return nil
+}
+
+func (h *Handler) btnViewAllAdmin(c bot.Context) error {
+	admins, err := h.s.GetAdmins()
+	if err != nil {
+		h.bot.Send(c.Chat(), "Что то пошло не так")
+		logger.Error("ошибка при получении btnViewAllAdmin", err)
+	}
+	h.bot.Send(c.Chat(), admins)
 	return nil
 }

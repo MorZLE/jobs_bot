@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/MorZLE/jobs_bot/config"
 	"github.com/MorZLE/jobs_bot/constants"
+	"github.com/MorZLE/jobs_bot/logger"
 	"github.com/MorZLE/jobs_bot/model"
 	_ "github.com/lib/pq"
 	"gorm.io/driver/postgres"
@@ -34,6 +35,7 @@ var Category = []string{
 }
 
 var Blacklist []int64
+var Admins []int64
 
 func NewRepository(cnf *config.Config) (Storage, error) {
 	db, err := gorm.Open(postgres.Open(cnf.DB), &gorm.Config{})
@@ -65,7 +67,16 @@ func NewRepository(cnf *config.Config) (Storage, error) {
 	for _, ban := range bans {
 		Blacklist = append(Blacklist, ban.Tgid)
 	}
-	return &repository{db: db, m: mCategory, mIdxResume: make(map[int64]int)}, nil
+	storage := &repository{db: db, m: mCategory, mIdxResume: make(map[int64]int)}
+	adm, err := storage.GetAdmins()
+	if err != nil {
+		logger.Error("failed to get admins", err)
+	}
+	Admins = append(Admins, cnf.Admin)
+	for _, admin := range adm {
+		Admins = append(Admins, admin.Tgid)
+	}
+	return storage, nil
 }
 
 type repository struct {
@@ -256,6 +267,13 @@ func (r *repository) CheckUrlAdmin(username, url string) error {
 	}
 	return nil
 }
+func (r *repository) DeleteUrlInvaite(username, url string) error {
+	err := r.db.Where("username = ?", username).Where("url = ?", url).Delete(&model.AdminInvait{}).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
 func (r *repository) CreateAdmin(username string, id int64) error {
 	admin := model.Admin{
@@ -263,7 +281,12 @@ func (r *repository) CreateAdmin(username string, id int64) error {
 		Tgid:     id,
 		Lvl:      constants.Junior,
 	}
-	return r.db.Create(&admin).Error
+	err := r.db.Create(&admin).Error
+	if err != nil {
+		return err
+	}
+	Admins = append(Admins, admin.Tgid)
+	return nil
 }
 
 func (r *repository) GetAdmins() ([]model.Admin, error) {
@@ -273,4 +296,31 @@ func (r *repository) GetAdmins() ([]model.Admin, error) {
 		return nil, err
 	}
 	return admins, nil
+}
+
+func (r *repository) DeleteAdmin(username string) error {
+	var admin model.Admin
+	err := r.db.Where("username = ?", username).Find(&admin).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return constants.ErrNotFound
+		}
+		return err
+	}
+	id := admin.Tgid
+	err = r.db.Where("username = ?", username).Delete(&model.Admin{}).Error
+	if err != nil {
+
+		return err
+	}
+	for r := range Admins {
+		if Admins[r] == id {
+			if r == len(Admins)-1 {
+				Admins = Admins[:r]
+				return nil
+			}
+			Admins = append(Admins[:r], Admins[r+1:]...)
+		}
+	}
+	return nil
 }

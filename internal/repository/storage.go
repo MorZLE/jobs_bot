@@ -20,4 +20,6 @@ type Storage interface {
 	CheckUrlAdmin(username, url string) error
 	CreateAdmin(username string, id int64) error
 	GetAdmins() ([]model.Admin, error)
+	DeleteUrlInvaite(username, url string) error
+	DeleteAdmin(username string) error
 }

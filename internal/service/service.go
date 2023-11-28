@@ -18,5 +18,6 @@ type Service interface {
 	ViewBanList() (string, error)
 	NewAdmin(username string) (string, error)
 	AuthNewAdmin(id int64, username, url string) error
-	GetAdmins() []int64
+	GetAdmins() (string, error)
+	DeleteAdmin(username string) error
 }

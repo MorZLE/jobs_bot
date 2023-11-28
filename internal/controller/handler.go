@@ -33,26 +33,25 @@ func NewHandler(s service.Service, cnf *config.Config) (*Handler, error) {
 		3: "Сфера деятельности",
 		4: "Прикрепите резюме в формате .pdf одной страницей",
 	}
-	admins := s.GetAdmins()
-	admins = append(admins, cnf.Admin)
+
 	return &Handler{
-		s:         s,
-		bot:       b,
-		dir:       cnf.Dir,
-		mQuestion: mQestion,
-		admins:    admins,
-		user:      make(map[int64]model.User),
+		s:          s,
+		bot:        b,
+		dir:        cnf.Dir,
+		mQuestion:  mQestion,
+		superadmin: cnf.Admin,
+		user:       make(map[int64]model.User),
 	}, nil
 }
 
 type Handler struct {
-	s         service.Service
-	bot       *bot.Bot
-	dir       string
-	user      map[int64]model.User // модель пользователя
-	mQuestion map[int]string
-	mutex     sync.RWMutex
-	admins    []int64
+	s          service.Service
+	bot        *bot.Bot
+	dir        string
+	user       map[int64]model.User // модель пользователя
+	mQuestion  map[int]string
+	mutex      sync.RWMutex
+	superadmin int64
 }
 
 func (h *Handler) Start() {
@@ -167,7 +166,7 @@ func (h *Handler) HandlerStart(c bot.Context) error {
 		menu.Row(btnStudent),
 	)
 	m := model.User{}
-	for _, v := range h.admins {
+	for _, v := range repository.Admins {
 		if id == v {
 			menu.Reply(
 				menu.Row(btnStudent),
