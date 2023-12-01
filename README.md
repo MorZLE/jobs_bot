@@ -38,7 +38,12 @@ Controller -> Service -> Repository
 
 **Меню работодателя**
 
-![image](https://github.com/MorZLE/jobs_bot/assets/122459662/1b72e110-184d-4499-b4e6-a25925b71f68)
+![image](https://github.com/MorZLE/jobs_bot/assets/122459662/65478f46-709c-4cf4-b720-7de35d12c974)
+
+
+
+
+
 
 **Меню администратора**
 
